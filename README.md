@@ -9,13 +9,17 @@ Installation
 ============
 
 To install the software and set it up:
-    > git clone https://github.com/gameclosure/NativeInspector.git
-    > cd NativeInspector
-    > npm install
-    > cd ..
+```shell
+git clone https://github.com/gameclosure/NativeInspector.git
+cd NativeInspector
+npm install
+cd ..
+```
 
 To run the software:
-    > node NativeInspector
+```shell
+node NativeInspector
+```
 
 
 ChangeLog
