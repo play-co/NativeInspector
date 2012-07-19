@@ -1,7 +1,7 @@
 {
     "name": "NativeInspector",
 	"main": "./NativeInspector.js",
-    "version": "0.1",
+    "version": "0.1.0",
     "description": "Web Inspector for native JavaScript",
     "homepage": "http://github.com/gameclosure/NativeInspector",
     "author": "Christopher A. Taylor <chris@gameclosure.com>",
