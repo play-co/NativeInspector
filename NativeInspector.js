@@ -162,26 +162,25 @@ function log(statCode, url, ip, err) {
 }
 
 var myAwesomeHTTPD = http.createServer(function(req, res) {
-  var ip = req.connection.remoteAddress;
+	var ip = req.connection.remoteAddress;
 
-  paperboy
-    .deliver(WEBROOT, req, res)
-    .addHeader('Cache-Control', 'no-cache')
-    .addHeader('Expires', '-1')
-    .after(function(statCode) {
-      log(statCode, req.url, ip);
-    })
-    .error(function(statCode, msg) {
-      res.writeHead(statCode, {'Content-Type': 'text/plain'});
-      res.end("!!ERROR!! Status code: " + statCode + " for URL: " + req.url);
-      log(statCode, req.url, ip, msg);
-    })
-    .otherwise(function(err) {
-      res.writeHead(404, {'Content-Type': 'text/plain'});
-      res.end("!!ERROR!! File not found: " + req.url);
-      log(404, req.url, ip, err);
-    });
-
+	paperboy
+		.deliver(WEBROOT, req, res)
+		.addHeader('Cache-Control', 'no-cache')
+		.addHeader('Expires', '-1')
+		.after(function(statCode) {
+			//log(statCode, req.url, ip);
+		})
+		.error(function(statCode, msg) {
+			res.writeHead(statCode, {'Content-Type': 'text/plain'});
+			res.end("!!ERROR!! Status code: " + statCode + " for URL: " + req.url);
+			log(statCode, req.url, ip, msg);
+		})
+		.otherwise(function(err) {
+			res.writeHead(404, {'Content-Type': 'text/plain'});
+			res.end("!!ERROR!! File not found: " + req.url);
+			log(404, req.url, ip, err);
+		});
 }).listen(BROWSER_PORT);
 
 console.log("Inspect: Lurking at http://0.0.0.0:" + BROWSER_PORT);
@@ -200,7 +199,7 @@ ControlServer.prototype.initialize = function(client) {
 
 	ws.configure(function() {
 		ws.set('transports', ['websocket']);
-		ws.set('log level', 1); // Change this to reduce log spam
+		ws.set('log level', 0); // Change this to reduce log spam
 	});
 
 	ws.sockets.on('connection', this._on_conn.bind(this));
@@ -295,7 +294,7 @@ BrowserServer.prototype.initialize = function(app, client) {
 
 	ws.configure(function() {
 		ws.set('transports', ['websocket']);
-		ws.set('log level', 1); // Change this to reduce log spam
+		ws.set('log level', 0); // Change this to reduce log spam
 	});
 
 	ws.sockets.on('connection', this._on_conn.bind(this));
@@ -471,12 +470,17 @@ BrowserSession.prototype.handleBreak = function(body) {
 }
 
 BrowserSession.prototype.onDebuggerEvent = function(obj) {
-	console.log("Inspect: Browser notified of debugger event ", JSON.stringify(obj));
-
 	switch (obj.event) {
 	case "break":
 		this.handleBreak(obj.body);
 		break;
+	case "afterCompile":
+		if (obj.body && obj.body.script) {
+			this.addConsoleMessage("info", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
+		}
+		break;
+	default:
+		console.log("Inspect: Unhandled debugger event ", JSON.stringify(obj));
 	}
 }
 
@@ -560,8 +564,6 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 	this.sendEvent("Debugger.globalObjectCleared");
 
 	this.client.listBreakpoints(function(obj) {
-		console.log("Inspect: Breakpoints dump " + JSON.stringify(obj));
-
 		var breakpoints = obj.body.breakpoints;
 		for (var ii = 0; ii < breakpoints.length; ++ii) {
 			this.client.clearBreakpoint(breakpoints[ii].number, function(resp) {
@@ -683,7 +685,7 @@ BrowserHandler.prototype["Runtime.releaseObjectGroup"] = function(req) {
 }
 
 BrowserHandler.prototype["Runtime.evaluate"] = function(req) {
-	this.client.evaluate(req.params.expression, undefined, function(resp) {
+	this.client.evaluate(req.params.expression, null, function(resp) {
 		// If evaulation succeeded,
 		if (resp.success) {
 			this.sendResponse(req.id, true, {
@@ -714,22 +716,26 @@ BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 		this.client.scope(scope, frame, function(resp) {
 			// Convert refs array into a set
 			var refs = {};
-			for (var ii = 0; ii < resp.refs.length; ++ii) {
-				var r = resp.refs[ii];
-				refs[r.handle] = r;
+			if (resp.refs) {
+				for (var ii = 0; ii < resp.refs.length; ++ii) {
+					var r = resp.refs[ii];
+					refs[r.handle] = r;
+				}
 			}
 
 			// Get an array of object properties
 			var objects = [];
-			for (key in resp.body.object.properties) {
-				var property = resp.body.object.properties[key];
+			if (resp.body && resp.body.object) {
+				for (key in resp.body.object.properties) {
+					var property = resp.body.object.properties[key];
 
-				var p = {
-					name: String(property.name),
-					value: getRemoteObject(refs[property.value.ref])
-				};
+					var p = {
+						name: String(property.name),
+						value: getRemoteObject(refs[property.value.ref])
+					};
 
-				objects.push(p);
+					objects.push(p);
+				}
 			}
 
 			this.sendResponse(req.id, resp.success, {result: objects});
@@ -740,15 +746,18 @@ BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 		this.client.lookup([handle], function(resp) {
 			// Convert refs array into a set
 			var refs = {};
-			for (var ii = 0; ii < resp.refs.length; ++ii) {
-				var r = resp.refs[ii];
-				refs[r.handle] = r;
+			if (resp.refs) {
+				for (var ii = 0; ii < resp.refs.length; ++ii) {
+					var r = resp.refs[ii];
+					refs[r.handle] = r;
+				}
 			}
 
 			// Get an array of object properties
 			var objects = [];
-			var obj = resp.body[handle];
-			if (obj.properties) {
+			if (resp.body && resp.body[handle]) {
+				var obj = resp.body[handle];
+
 				for (var ii = 0; ii < obj.properties.length; ++ii) {
 					var property = obj.properties[ii];
 
@@ -871,9 +880,16 @@ BrowserHandler.prototype["Debugger.stepOut"] = function(req) {
 	}.bind(this));
 }
 
-BrowserHandler.prototype["Debugger.resume"] = function(req) {
-	this.client.resume(undefined, undefined, function(resp) {
+BrowserHandler.prototype["Debugger.pause"] = function(req) {
+	this.client.suspend(function(resp) {
 		this.sendResponse(req.id, resp.success);
+	}.bind(this));
+}
+
+BrowserHandler.prototype["Debugger.resume"] = function(req) {
+	this.client.exitBreak(function(resp) {
+		this.sendResponse(req.id, resp.success);
+		this.sendEvent("Debugger.resumed");
 	}.bind(this));
 }
 
@@ -1301,6 +1317,12 @@ Client.prototype.resume = function(step, count, callback) {
 	}, callback);
 }
 
+Client.prototype.exitBreak = function(callback) {
+	this.request({
+		command: 'continue'
+	}, callback);
+}
+
 Client.prototype.suspend = function(callback) {
 	this.request({
 		command: 'suspend',
@@ -1447,19 +1469,17 @@ Client.prototype.getScriptSource = function(id, callback) {
 }
 
 Client.prototype.evaluate = function(expression, frame, callback) {
-	var global = (frame === null);
-
 	var r = {
 		command: 'evaluate',
 		arguments: {
 			expression: expression,
-			global: global,
+			global: frame == null,
 			disable_break: true,
 			maxStringLength: 10000000
 		}
 	};
 
-	if (!global) {
+	if (frame != null) {
 		r.arguments.frame = frame;
 	}
 

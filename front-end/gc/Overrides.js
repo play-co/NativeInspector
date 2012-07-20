@@ -31,7 +31,7 @@ WebInspector.loaded = function() {
         var msg = WebInspector.ConsoleMessage.create(
             WebInspector.ConsoleMessage.MessageSource.Other,
             WebInspector.ConsoleMessage.MessageLevel.Error,
-            "--- Disconnected from back-end server at http://" + window.location.host + "/.  Please restart the server.");
+            "--- Disconnected from back-end server at http://" + window.location.host + "/.");
 		WebInspector.console.addMessage(msg);
 	});
 };
