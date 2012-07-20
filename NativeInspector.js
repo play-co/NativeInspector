@@ -410,7 +410,7 @@ function convertCallFrames(frames) {
 					location: {
 						columnNumber: frame.column,
 						lineNumber: frame.line,
-						scriptId: frame.func.scriptId
+						scriptId: String(frame.func.scriptId)
 					},
 					scopeChain: []
 				};
@@ -496,8 +496,6 @@ BrowserSession.prototype.onDebuggerClose = function() {
 }
 
 BrowserSession.prototype.onPingTimer = function() {
-	console.log('Inspect: Ping!');
-
 	this.socket.send('ping');
 
 	this.pingTimeout = setTimeout(this.onPingTimer.bind(this), 30000);
@@ -704,6 +702,10 @@ BrowserHandler.prototype["Runtime.evaluate"] = function(req) {
 	}.bind(this));
 }
 
+BrowserHandler.prototype["Runtime.callFunctionOn"] = function(req) {
+	console.log("callFunctionOn : " + JSON.stringify(req));
+}
+
 BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 	var tokens = req.params.objectId.split(':');
 	var frame = +tokens[0], scope = +tokens[1], ref = tokens[2];
@@ -833,7 +835,7 @@ BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
 			locations.push({
 				lineNumber: actual[ii].line,
 				columnNumber: actual[ii].column,
-				scriptId: actual[ii].script_id
+				scriptId: String(actual[ii].script_id)
 			});
 		}
 		this.sendResponse(req.id, true, {
