@@ -359,6 +359,7 @@ BrowserSession.prototype.initialize = function(socket, server, client) {
 	this.last_id = null; // For fast response path
 	this.loaded = false;
 	this.connected = false;
+	this.breakpointsActive = true;
 
 	this.handler = new BrowserHandler();
 
@@ -458,15 +459,21 @@ function convertCallFrames(frames) {
 }
 
 BrowserSession.prototype.handleBreak = function(body) {
-	this.client.backtrace(function(resp) {
-		var frames = convertCallFrames(resp.body.frames);
+	if (this.breakpointsActive) {
+		this.client.backtrace(function(resp) {
+			var frames = convertCallFrames(resp.body.frames);
 
-		this.sendEvent("Debugger.paused", {
-			callFrames: frames,
-			reason: "Breakpoint @ " + body.script.name + ":" + body.script.lineOffset,
-			data: "Source line text: " + body.sourceLineText
-		});
-	}.bind(this));
+			this.sendEvent("Debugger.paused", {
+				callFrames: frames,
+				reason: "Breakpoint @ " + body.script.name + ":" + body.script.lineOffset,
+				data: "Source line text: " + body.sourceLineText
+			});
+		}.bind(this));
+	} else {
+		this.client.exitBreak(function(resp) {
+			this.sendEvent("Debugger.resumed");
+		}.bind(this));
+	}
 }
 
 BrowserSession.prototype.onDebuggerEvent = function(obj) {
@@ -523,7 +530,11 @@ BrowserSession.prototype.message = function(req_str) {
 		if (typeof(f) === 'function') {
 			var result = f.apply(this, [req]);
 		} else {
-			console.log('Inspect: Unhandled ', req.method);
+			if (req.method.indexOf("Debugger") != -1) {
+				console.log('Inspect: Unhandled ', req.method);
+			} else if (req.method.indexOf("Runtime") != -1) {
+				console.log('Inspect: Unhandled ', req.method);
+			}
 		}
 	} else {
 		console.log('Inspect: Non-method message ', JSON.stringify(req));
@@ -705,7 +716,12 @@ BrowserHandler.prototype["Runtime.evaluate"] = function(req) {
 }
 
 BrowserHandler.prototype["Runtime.callFunctionOn"] = function(req) {
-	console.log("callFunctionOn : " + JSON.stringify(req));
+	var func = req.params.functionDeclaration;
+	var args = req.params.arguments;
+	var tokens = req.params.objectId.split(':');
+	var frame = +tokens[0], scope = +tokens[1], ref = tokens[2];
+
+	// TODO: Does not seem to be necessary
 }
 
 BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
@@ -793,6 +809,10 @@ BrowserHandler.prototype["Debugger.supportsNativeBreakpoints"] = function(req) {
 	this.sendResponse(req.id, true, {result: true});
 }
 
+BrowserHandler.prototype["Debugger.canSetScriptSource"] = function(req) {
+	this.sendResponse(req.id, true, {result: false});
+}
+
 BrowserHandler.prototype["Page.canOverrideDeviceMetrics"] = function(req) {
 	this.sendResponse(req.id, true, {result: false});
 
@@ -831,6 +851,9 @@ BrowserHandler.prototype["Debugger.setBreakpointsActive"] = function(req) {
 	var active = req.params.active;
 
 	console.log("Inspect: setBreakpointsActive(", active, ")");
+
+	this.breakpointsActive = active;
+
 	this.sendResponse(req.id, true);
 }
 
@@ -881,6 +904,8 @@ BrowserHandler.prototype["Debugger.stepOut"] = function(req) {
 }
 
 BrowserHandler.prototype["Debugger.pause"] = function(req) {
+	this.breakpointsActive = true;
+
 	this.client.suspend(function(resp) {
 		this.sendResponse(req.id, resp.success);
 	}.bind(this));
@@ -924,8 +949,6 @@ BrowserHandler.prototype["Debugger.getScriptSource"] = function(req) {
 		} else {
 			// Other info ignored: lineOffset, script name, line count
 			var source = resp.body[0].source;
-
-			console.log("Inspect: Got source for " + req.params.scriptId + " - " + source.length + " chars");
 
 			this.sendResponse(req.id, resp.success, {
 				scriptSource: source
