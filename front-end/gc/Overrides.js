@@ -14,11 +14,25 @@ WebInspector.loaded = function() {
 		}
 	});
 
-	WebInspector.socket.on('error', function(error) { console.error(error); });
+	WebInspector.socket.on('error', function(error) {
+        var msg = WebInspector.ConsoleMessage.create(
+            WebInspector.ConsoleMessage.MessageSource.Other,
+            WebInspector.ConsoleMessage.MessageLevel.Error,
+            "--- socket.io error : " + JSON.stringify(error));
+		WebInspector.console.addMessage(msg);
+	});
 
 	WebInspector.socket.on('connect', function() {
 		InspectorFrontendHost.sendMessageToBackend = WebInspector.socket.send.bind(WebInspector.socket);
 		WebInspector.doLoadedDone();
+	});
+
+	WebInspector.socket.on('disconnect', function() {
+        var msg = WebInspector.ConsoleMessage.create(
+            WebInspector.ConsoleMessage.MessageSource.Other,
+            WebInspector.ConsoleMessage.MessageLevel.Error,
+            "--- Disconnected from back-end server at http://" + window.location.host + "/.  Please restart the server.");
+		WebInspector.console.addMessage(msg);
 	});
 };
 
