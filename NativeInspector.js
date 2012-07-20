@@ -247,8 +247,6 @@ ControlSession.prototype.initialize = function(socket, server, client) {
 }
 
 ControlSession.prototype.onPingTimer = function() {
-	console.log('Inspect: Ping!');
-
 	this.sendEvent('ping', 'wazaaaa');
 
 	this.pingTimeout = setTimeout(this.onPingTimer.bind(this), 30000);
@@ -397,8 +395,89 @@ BrowserSession.prototype.onDebuggerConnect = function() {
 	}
 }
 
+function convertCallFrames(frames) {
+	var result = [];
+
+	// If there are any frames,
+	if (frames) {
+		for (var ii = 0; ii < frames.length; ++ii) {
+			var frame = frames[ii];
+
+			if (frame.type === "frame") {
+				var frame_result = {
+					callFrameId: "0",
+					functionName: frame.func.inferredName,
+					location: {
+						columnNumber: frame.column,
+						lineNumber: frame.line,
+						scriptId: frame.func.scriptId
+					},
+					scopeChain: []
+				};
+
+				for (var jj = 0; jj < frame.scopes.length; ++jj) {
+					var scope = frame.scopes[jj];
+					var scope_result = {
+						object: {
+							description: "Scope Index " + frame.index,
+							objectId: frame.index + ":" + scope.index + ":backtrace"
+						}
+					};
+
+					switch (scope.type) {
+					case 0:
+						scope_result.type = 'global';
+						break;
+					case 1:
+						scope_result.type = 'local';
+						frame_result.this = {
+							type: "object",
+							className: frame.receiver.className,
+							description: frame.receiver.className,
+							objectId: frame.index + ":" + scope.index + ":" + frame.receiver.ref
+						};
+						break;
+					case 2:
+						scope_result.type = 'with';
+						break;
+					case 3:
+						scope_result.type = 'closure';
+						break;
+					case 4:
+						scope_result.type = 'catch';
+					}
+
+					frame_result.scopeChain.push(scope_result);
+				}
+
+				result.push(frame_result);
+			}
+		}
+	}
+
+	return result;
+}
+
+BrowserSession.prototype.handleBreak = function(body) {
+	this.client.backtrace(function(resp) {
+		var frames = convertCallFrames(resp.body.frames);
+
+		this.sendEvent("Debugger.paused", {
+			callFrames: frames,
+			reason: "Breakpoint @ " + body.script.name + ":" + body.script.lineOffset,
+			data: "Source line text: " + body.sourceLineText
+		});
+	}.bind(this));
+}
+
 BrowserSession.prototype.onDebuggerEvent = function(obj) {
 	console.log("Inspect: Browser notified of debugger event ", JSON.stringify(obj));
+
+	switch (obj.event) {
+	case "break":
+		this.handleBreak(obj.body);
+		break;
+	}
 }
 
 BrowserSession.prototype.onDebuggerClose = function() {
@@ -500,7 +579,7 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 			if (script.type === "script") {
 				this.sendEvent("Debugger.scriptParsed", {
 					scriptId: String(script.id),
-					url: script.name,
+					url: (script.name === undefined) ? "<stuff you injected>" : String(script.name),
 					startLine: script.lineOffset,
 					startColumn: script.columnOffset,
 					endLine: script.lineCount,
@@ -580,52 +659,37 @@ BrowserHandler.prototype.initialize = function() {
 
 //// Runtime Messages
 
-function getRemoteObject(resp) {
-	var body = resp.body;
+function getRemoteObject(obj) {
+	var result = {
+		type: obj.type,
+		className: obj.className,
+		description: obj.text || obj.value,
+		objectId: "0:0:" + obj.handle,
+		value: obj.text || obj.value
+		//subtype: "null"
+	};
 
-	switch (body.type) {
-	case "number":
-		return {
-			type: "number",
-			description: body.text,
-			objectId: "0:0:" + body.handle,
-			value: body.text
-		};
+	switch (obj.type) {
 	case "object":
-		return {
-			type: "object",
-			className: body.className,
-			description: "Object",
-			objectId: "0:0:" + body.handle,
-			subtype: "null"
-		};
-	case "undefined":
-		return {
-			type: "undefined",
-			description: "undefined",
-			value: "undefined",
-			objectId: "0:0:" + body.handle
-		};
-	default:
-		console.log(JSON.stringify(resp, undefined, 4));
-
-		return {
-			type: "object",
-			description: "Unrecognized type: " + body.type,
-			objectId: "0:0:0",
-			value: "Unrecognized type: " + body.type
-		};
+		result.description = obj.className || "Object";
+		break;
+	case "function":
+		result.description = obj.text || "function()";
 	}
+
+	return result;
+}
+
+BrowserHandler.prototype["Runtime.releaseObjectGroup"] = function(req) {
+	this.sendResponse(req.id, true);
 }
 
 BrowserHandler.prototype["Runtime.evaluate"] = function(req) {
-	var expression = req.params.expression;
-
-	this.client.evaluate(expression, null, function(resp) {
+	this.client.evaluate(req.params.expression, undefined, function(resp) {
 		// If evaulation succeeded,
 		if (resp.success) {
 			this.sendResponse(req.id, true, {
-				result: getRemoteObject(resp),
+				result: getRemoteObject(resp.body),
 				wasThrown: false
 			});
 		} else {
@@ -638,6 +702,73 @@ BrowserHandler.prototype["Runtime.evaluate"] = function(req) {
 			});
 		}
 	}.bind(this));
+}
+
+BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
+	var tokens = req.params.objectId.split(':');
+	var frame = +tokens[0], scope = +tokens[1], ref = tokens[2];
+
+	if (ref === "backtrace") {
+		this.client.scope(scope, frame, function(resp) {
+			// Convert refs array into a set
+			var refs = {};
+			for (var ii = 0; ii < resp.refs.length; ++ii) {
+				var r = resp.refs[ii];
+				refs[r.handle] = r;
+			}
+
+			// Get an array of object properties
+			var objects = [];
+			for (key in resp.body.object.properties) {
+				var property = resp.body.object.properties[key];
+
+				var p = {
+					name: String(property.name),
+					value: getRemoteObject(refs[property.value.ref])
+				};
+
+				objects.push(p);
+			}
+
+			this.sendResponse(req.id, resp.success, {result: objects});
+		}.bind(this));
+	} else {
+		var handle = +ref;
+
+		this.client.lookup([handle], function(resp) {
+			// Convert refs array into a set
+			var refs = {};
+			for (var ii = 0; ii < resp.refs.length; ++ii) {
+				var r = resp.refs[ii];
+				refs[r.handle] = r;
+			}
+
+			// Get an array of object properties
+			var objects = [];
+			var obj = resp.body[handle];
+			if (obj.properties) {
+				for (var ii = 0; ii < obj.properties.length; ++ii) {
+					var property = obj.properties[ii];
+
+					var p = {
+						name: String(property.name),
+						value: getRemoteObject(refs[property.ref])
+					};
+
+					objects.push(p);
+				}
+			}
+
+			if (obj.protoObject) {
+				objects.push({
+					name: "__proto__",
+					value: getRemoteObject(refs[obj.protoObject.ref])
+				});
+			}
+
+			this.sendResponse(req.id, resp.success, {result: objects});
+		}.bind(this));
+	}
 }
 
 
@@ -686,10 +817,9 @@ BrowserHandler.prototype["Debugger.setPauseOnExceptions"] = function(req) {
 }
 
 BrowserHandler.prototype["Debugger.setBreakpointsActive"] = function(req) {
-	console.log(JSON.stringify(req, undefined, 4));
 	var active = req.params.active;
 
-	console.log("Inspect: setBreakpointsActive(", active, ")" + JSON.stringify(req));
+	console.log("Inspect: setBreakpointsActive(", active, ")");
 	this.sendResponse(req.id, true);
 }
 
@@ -702,7 +832,8 @@ BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
 		for (var ii = 0; ii < actual.length; ++ii) {
 			locations.push({
 				lineNumber: actual[ii].line,
-				columnNumber: actual[ii].column
+				columnNumber: actual[ii].column,
+				scriptId: actual[ii].script_id
 			});
 		}
 		this.sendResponse(req.id, true, {
@@ -712,18 +843,76 @@ BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
 	}.bind(this));
 }
 
+BrowserHandler.prototype["Debugger.removeBreakpoint"] = function(req) {
+	var id = req.params.breakpointId;
+
+	this.client.clearBreakpoint(id, function(resp) {
+		this.sendResponse(req.id, resp.success);
+	}.bind(this));
+}
+
+BrowserHandler.prototype["Debugger.stepInto"] = function(req) {
+	this.client.resume('in', 1, function(resp) {
+		this.sendResponse(req.id, resp.success);
+	}.bind(this));
+}
+
+BrowserHandler.prototype["Debugger.stepOver"] = function(req) {
+	this.client.resume('next', 1, function(resp) {
+		this.sendResponse(req.id, resp.success);
+	}.bind(this));
+}
+
+BrowserHandler.prototype["Debugger.stepOut"] = function(req) {
+	this.client.resume('out', 1, function(resp) {
+		this.sendResponse(req.id, resp.success);
+	}.bind(this));
+}
+
+BrowserHandler.prototype["Debugger.resume"] = function(req) {
+	this.client.resume(undefined, undefined, function(resp) {
+		this.sendResponse(req.id, resp.success);
+	}.bind(this));
+}
+
+BrowserHandler.prototype["Debugger.evaluateOnCallFrame"] = function(req) {
+	this.client.evaluate(req.params.expression, req.params.callFrameId, function(resp) {
+		// If evaulation succeeded,
+		if (resp.success) {
+			this.sendResponse(req.id, true, {
+				result: getRemoteObject(resp.body),
+				wasThrown: false
+			});
+		} else {
+			this.sendResponse(req.id, true, {
+				result: {
+					type: "error",
+					description: resp.message
+				},
+				wasThrown: true
+			});
+		}
+	}.bind(this));
+}
+
 BrowserHandler.prototype["Debugger.getScriptSource"] = function(req) {
 	var scriptId = req.params.scriptId;
 
 	this.client.getScriptSource(scriptId, function(resp) {
-		// Other info ignored: lineOffset, script name, line count
-		var source = resp.success ? resp.body[0].source : "Unable to load source file.  Try reloading the page";
+		if (!resp.success || !resp.body[0] || !resp.body[0].source) {
+			this.sendResponse(req.id, false, {
+				scriptSource: "Unable to load source file.  Try reloading the page"
+			});
+		} else {
+			// Other info ignored: lineOffset, script name, line count
+			var source = resp.body[0].source;
 
-		console.log("Inspect: Got source for " + req.params.scriptId + " - " + source.length + " chars");
+			console.log("Inspect: Got source for " + req.params.scriptId + " - " + source.length + " chars");
 
-		this.sendResponse(req.id, resp.success, {
-			scriptSource: source
-		});
+			this.sendResponse(req.id, resp.success, {
+				scriptSource: source
+			});
+		}
 	}.bind(this));
 }
 
