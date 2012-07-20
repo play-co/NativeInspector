@@ -9,7 +9,7 @@ var urllib = require('url');
 var BROWSER_PORT = 8003;
 var DEBUG_PORT = 9222;
 var CONTROL_PORT = 9584;
-var WEBROOT = require('path').join(__dirname, '../front-end');
+var WEBROOT = require('path').join(__dirname, 'front-end');
 
 
 //// Class Framework
@@ -343,7 +343,7 @@ BrowserServer.prototype.addConsoleMessage = function(level, text) {
 }
 
 BrowserServer.prototype.clearConsoleMessages = function() {
-	this.broadcastEvent("Console.messagesCleared", {});
+	this.broadcastEvent("Console.messagesCleared");
 }
 
 
@@ -361,6 +361,7 @@ BrowserSession.prototype.initialize = function(socket, server, client) {
 	this.pingTimeout = null;
 	this.last_id = null; // For fast response path
 	this.loaded = false;
+	this.connected = false;
 
 	this.handler = new BrowserHandler();
 
@@ -385,36 +386,15 @@ BrowserSession.prototype.initialize = function(socket, server, client) {
 BrowserSession.prototype.onDebuggerConnect = function() {
 	console.log("Inspect: Browser notified of debugger connect");
 
-	this.client.listBreakpoints(function(obj) {
-		console.log("Inspect: Breakpoints dump " + JSON.stringify(obj));
+	if (!this.connected) {
+		this.connected = true;
 
-		var breakpoints = obj.body.breakpoints;
-		for (var ii = 0; ii < breakpoints.length; ++ii) {
-			this.client.clearBreakpoint(breakpoints[ii].number, function(resp) {
-				// Ignore response
-			}.bind(this));
+		if (this.loaded) {
+			this.addConsoleMessage("info", "--- Device reconnected.");
+
+			this.onLoadAndDebug();
 		}
-	}.bind(this));
-
-	this.client.getScripts(function(obj) {
-		for (var ii = 0, len = obj.body.length; ii < len; ++ii) {
-			var script = obj.body[ii];
-
-			//console.log("Inspect: Found script ", script.name, " : ", JSON.stringify(script));
-
-			if (script.type === "script") {
-				this.sendEvent("Debugger.scriptParsed", {
-					scriptId: String(script.id),
-					url: script.name,
-					startLine: script.lineOffset,
-					startColumn: script.columnOffset,
-					endLine: script.lineCount,
-					endColumn: 0,
-					isContentScript: true
-				});
-			}
-		}
-	}.bind(this));
+	}
 }
 
 BrowserSession.prototype.onDebuggerEvent = function(obj) {
@@ -423,6 +403,17 @@ BrowserSession.prototype.onDebuggerEvent = function(obj) {
 
 BrowserSession.prototype.onDebuggerClose = function() {
 	console.log("Inspect: Browser notified of debugger close");
+
+	if (this.connected) {
+		this.connected = false;
+
+		if (this.loaded) {
+			this.addConsoleMessage("error", "--- Device disconnected.");
+
+			// Clear scripts view
+			this.sendEvent("Debugger.globalObjectCleared");
+		}
+	}
 }
 
 BrowserSession.prototype.onPingTimer = function() {
@@ -451,7 +442,7 @@ BrowserSession.prototype.message = function(req_str) {
 		if (typeof(f) === 'function') {
 			var result = f.apply(this, [req]);
 		} else {
-			console.log('Inspect: Unhandled ', req.method, " : ", JSON.stringify(req));
+			console.log('Inspect: Unhandled ', req.method);
 		}
 	} else {
 		console.log('Inspect: Non-method message ', JSON.stringify(req));
@@ -459,6 +450,10 @@ BrowserSession.prototype.message = function(req_str) {
 }
 
 BrowserSession.prototype.sendResponse = function(id, success, data) {
+	if (data === undefined) {
+		data = {};
+	}
+
 	//console.log("OUTGOING " + id + " " + success + " " + JSON.stringify(data));
 
 	this.socket.send(JSON.stringify({
@@ -469,7 +464,9 @@ BrowserSession.prototype.sendResponse = function(id, success, data) {
 }
 
 BrowserSession.prototype.sendEvent = function(name, data) {
-	data = data || {};
+	if (data === undefined) {
+		data = {};
+	}
 
 	//console.log("OUTGOING event " + name + " " + JSON.stringify(data));
 
@@ -480,8 +477,58 @@ BrowserSession.prototype.sendEvent = function(name, data) {
 	}));
 }
 
+// Called whenever loaded and connected just became true, from any other state arriving in any order
+BrowserSession.prototype.onLoadAndDebug = function() {
+	// Clear scripts view
+	this.sendEvent("Debugger.globalObjectCleared");
+
+	this.client.listBreakpoints(function(obj) {
+		console.log("Inspect: Breakpoints dump " + JSON.stringify(obj));
+
+		var breakpoints = obj.body.breakpoints;
+		for (var ii = 0; ii < breakpoints.length; ++ii) {
+			this.client.clearBreakpoint(breakpoints[ii].number, function(resp) {
+				// Ignore response
+			}.bind(this));
+		}
+	}.bind(this));
+
+	this.client.getScripts(function(obj) {
+		for (var ii = 0, len = obj.body.length; ii < len; ++ii) {
+			var script = obj.body[ii];
+
+			if (script.type === "script") {
+				this.sendEvent("Debugger.scriptParsed", {
+					scriptId: String(script.id),
+					url: script.name,
+					startLine: script.lineOffset,
+					startColumn: script.columnOffset,
+					endLine: script.lineCount,
+					endColumn: 0,
+					isContentScript: true,
+					sourceMapURL: script.name
+				});
+			}
+		}
+	}.bind(this));
+}
+
 BrowserSession.prototype.onLoad = function() {
-	this.addConsoleMessage("error", "*** Reconnected to device.");
+	if (!this.loaded) {
+		this.loaded = true;
+
+		this.addConsoleMessage("info", "The Native Web Inspector allows you to debug and profile JavaScript code running live on a device.");
+		this.addConsoleMessage("info", "The application must have been built with the --debug flag.");
+		this.addConsoleMessage("info", "And it can only debug one application at a time, so be sure to force close other debug-mode applications.");
+
+		if (this.connected) {
+			this.addConsoleMessage("info", "--- Device is connected.");
+
+			this.onLoadAndDebug();
+		} else {
+			this.addConsoleMessage("error", "--- Device is not connected yet.");
+		}
+	}
 }
 
 BrowserSession.prototype.disconnect = function() {
@@ -517,7 +564,7 @@ BrowserSession.prototype.addConsoleMessage = function(level, text) {
 }
 
 BrowserSession.prototype.clearConsoleMessages = function() {
-	this.sendEvent("Console.messagesCleared", {});
+	this.sendEvent("Console.messagesCleared");
 }
 
 
@@ -533,17 +580,53 @@ BrowserHandler.prototype.initialize = function() {
 
 //// Runtime Messages
 
+function getRemoteObject(resp) {
+	var body = resp.body;
+
+	switch (body.type) {
+	case "number":
+		return {
+			type: "number",
+			description: body.text,
+			objectId: "0:0:" + body.handle,
+			value: body.text
+		};
+	case "object":
+		return {
+			type: "object",
+			className: body.className,
+			description: "Object",
+			objectId: "0:0:" + body.handle,
+			subtype: "null"
+		};
+	case "undefined":
+		return {
+			type: "undefined",
+			description: "undefined",
+			value: "undefined",
+			objectId: "0:0:" + body.handle
+		};
+	default:
+		console.log(JSON.stringify(resp, undefined, 4));
+
+		return {
+			type: "object",
+			description: "Unrecognized type: " + body.type,
+			objectId: "0:0:0",
+			value: "Unrecognized type: " + body.type
+		};
+	}
+}
+
 BrowserHandler.prototype["Runtime.evaluate"] = function(req) {
 	var expression = req.params.expression;
 
 	this.client.evaluate(expression, null, function(resp) {
-		console.log("Client response: " + JSON.stringify(resp));
-
 		// If evaulation succeeded,
 		if (resp.success) {
 			this.sendResponse(req.id, true, {
-				result: "Testing",
-				isException: true
+				result: getRemoteObject(resp),
+				wasThrown: false
 			});
 		} else {
 			this.sendResponse(req.id, true, {
@@ -551,7 +634,7 @@ BrowserHandler.prototype["Runtime.evaluate"] = function(req) {
 					type: "error",
 					description: resp.message
 				},
-				isException: true
+				wasThrown: true
 			});
 		}
 	}.bind(this));
@@ -572,15 +655,12 @@ BrowserHandler.prototype["Page.canOverrideDeviceMetrics"] = function(req) {
 	this.sendResponse(req.id, true, {result: false});
 
 	// Trigger onLoad event
-	if (!this.loaded) {
-		this.loaded = true;
-		this.onLoad();
-	}
+	this.onLoad();
 }
 
 BrowserHandler.prototype["Debugger.enable"] = function(req) {
 	console.log("Inspect: Enabled Debugger");
-	this.sendResponse(req.id, true, {});
+	this.sendResponse(req.id, true);
 }
 
 BrowserHandler.prototype["Debugger.disable"] = function(req) {
@@ -601,22 +681,35 @@ BrowserHandler.prototype["Debugger.setPauseOnExceptions"] = function(req) {
 	}
 
 	this.client.setExceptionBreak(type, enabled, function(obj) {
-		this.sendResponse(req.id, obj.success, {});
+		this.sendResponse(req.id, obj.success);
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.setBreakpointsActive"] = function(req) {
+	console.log(JSON.stringify(req, undefined, 4));
 	var active = req.params.active;
 
 	console.log("Inspect: setBreakpointsActive(", active, ")" + JSON.stringify(req));
-	this.sendResponse(req.id, true, {});
+	this.sendResponse(req.id, true);
 }
 
 BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
-	var active = req.params.active;
+	var bp = req.params;
 
-	console.log("Inspect: setBreakpointsActive(", active, ")");
-	this.sendResponse(req.id, true, {});
+	this.client.setBreakpointByUrl(bp.lineNumber, bp.url, bp.columnNumber, true, bp.condition, function(resp) {
+		var actual = resp.body.actual_locations;
+		var locations = [];
+		for (var ii = 0; ii < actual.length; ++ii) {
+			locations.push({
+				lineNumber: actual[ii].line,
+				columnNumber: actual[ii].column
+			});
+		}
+		this.sendResponse(req.id, true, {
+			breakpointId: String(resp.body.breakpoint),
+			locations: locations
+		});
+	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.getScriptSource"] = function(req) {
@@ -651,7 +744,7 @@ BrowserHandler.prototype["Profiler.hasHeapProfiler"] = function(req) {
 
 BrowserHandler.prototype["Profiler.enable"] = function(req) {
 	console.log("Inspect: Enabled Profiler");
-	this.sendResponse(req.id, true, {});
+	this.sendResponse(req.id, true);
 }
 
 BrowserHandler.prototype["Profiler.start"] = function(req) {
@@ -764,6 +857,10 @@ Deframer.prototype.processHeaders = function() {
 				buffer[ii+2] == 13 &&
 				buffer[ii+3] == 10)
 			{
+				if (ii < 16) {
+					console.log("Inspect: !!WARNING!! Invalid frame header; delimiter found too soon");
+				}
+
 				// Split header data into lines
 				var lines = buffer.slice(0, ii).toString('utf8').split('\r\n');
 
@@ -775,13 +872,13 @@ Deframer.prototype.processHeaders = function() {
 					this.headers[pair[0]] = pair[1];
 				}
 
-				this.syntaxProcessor = this.processContent;
-
 				// Grab content length or zero
 				this.contentLength = +this.headers['Content-Length'];
 				this.offset = ii + 4;
 
+				this.syntaxProcessor = this.processContent;
 				this.processContent();
+				break;
 			}
 		}
 	}
