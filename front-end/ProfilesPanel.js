@@ -222,8 +222,10 @@ WebInspector.ProfilesPanel = function()
     this._launcherView.setUpEventListeners();
 
     this._registerProfileType(new WebInspector.CPUProfileType());
-    if (!WebInspector.WorkerManager.isWorkerFrontend())
-        this._registerProfileType(new WebInspector.CSSSelectorProfileType());
+
+// Do not profile CSS selector -cat
+//    if (!WebInspector.WorkerManager.isWorkerFrontend())
+//        this._registerProfileType(new WebInspector.CSSSelectorProfileType());
     if (Capabilities.heapProfilerPresent)
         this._registerProfileType(new WebInspector.HeapSnapshotProfileType());
 

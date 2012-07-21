@@ -484,7 +484,23 @@ BrowserSession.prototype.onDebuggerEvent = function(obj) {
 	case "afterCompile":
 		if (obj.body && obj.body.script) {
 			this.addConsoleMessage("info", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
+
+			var script = obj.body.script;
+
+			this.sendEvent("Debugger.scriptParsed", {
+				scriptId: String(script.id),
+				url: (script.name === undefined) ? "<stuff you injected>" : String(script.name),
+				startLine: script.lineOffset,
+				startColumn: script.columnOffset,
+				endLine: script.lineCount,
+				endColumn: 0,
+				isContentScript: true,
+				sourceMapURL: script.name
+			});
 		}
+		break;
+	case "scriptCollected":
+		// Ignore script collected (GC?) notifications
 		break;
 	default:
 		console.log("Inspect: Unhandled debugger event ", JSON.stringify(obj));
@@ -513,8 +529,6 @@ BrowserSession.prototype.onPingTimer = function() {
 }
 
 BrowserSession.prototype.message = function(req_str) {
-	//console.log("INCOMING " + req_str);
-
 	var req = JSON.parse(req_str);
 
 	if (req && req.method) {
@@ -534,6 +548,8 @@ BrowserSession.prototype.message = function(req_str) {
 				console.log('Inspect: Unhandled ', req.method);
 			} else if (req.method.indexOf("Runtime") != -1) {
 				console.log('Inspect: Unhandled ', req.method);
+			} else if (req.method.indexOf("Profiler") != -1) {
+				console.log('Inspect: Unhandled ', req.method);
 			}
 		}
 	} else {
@@ -541,16 +557,13 @@ BrowserSession.prototype.message = function(req_str) {
 	}
 }
 
-BrowserSession.prototype.sendResponse = function(id, success, data) {
+BrowserSession.prototype.sendResponse = function(id, data) {
 	if (data === undefined) {
 		data = {};
 	}
 
-	//console.log("OUTGOING " + id + " " + success + " " + JSON.stringify(data));
-
 	this.socket.send(JSON.stringify({
 		id: id,
-		success: success,
 		result: data
 	}));
 }
@@ -559,8 +572,6 @@ BrowserSession.prototype.sendEvent = function(name, data) {
 	if (data === undefined) {
 		data = {};
 	}
-
-	//console.log("OUTGOING event " + name + " " + JSON.stringify(data));
 
 	this.socket.send(JSON.stringify({
 		type: 'event',
@@ -581,6 +592,10 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 				// Ignore response
 			}.bind(this));
 		}
+	}.bind(this));
+
+	this.client.exitBreak(function(obj) {
+		// Ignore response
 	}.bind(this));
 
 	this.client.getScripts(function(obj) {
@@ -692,19 +707,19 @@ function getRemoteObject(obj) {
 }
 
 BrowserHandler.prototype["Runtime.releaseObjectGroup"] = function(req) {
-	this.sendResponse(req.id, true);
+	this.sendResponse(req.id);
 }
 
 BrowserHandler.prototype["Runtime.evaluate"] = function(req) {
 	this.client.evaluate(req.params.expression, null, function(resp) {
 		// If evaulation succeeded,
 		if (resp.success) {
-			this.sendResponse(req.id, true, {
+			this.sendResponse(req.id, {
 				result: getRemoteObject(resp.body),
 				wasThrown: false
 			});
 		} else {
-			this.sendResponse(req.id, true, {
+			this.sendResponse(req.id, {
 				result: {
 					type: "error",
 					description: resp.message
@@ -754,7 +769,7 @@ BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 				}
 			}
 
-			this.sendResponse(req.id, resp.success, {result: objects});
+			this.sendResponse(req.id, {result: objects});
 		}.bind(this));
 	} else {
 		var handle = +ref;
@@ -793,7 +808,7 @@ BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 				});
 			}
 
-			this.sendResponse(req.id, resp.success, {result: objects});
+			this.sendResponse(req.id, {result: objects});
 		}.bind(this));
 	}
 }
@@ -802,19 +817,30 @@ BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 //// Debugger Messages
 
 BrowserHandler.prototype["Debugger.causesRecompilation"] = function(req) {
-	this.sendResponse(req.id, true, {result: false});
+	this.sendResponse(req.id, {result: false});
 }
 
 BrowserHandler.prototype["Debugger.supportsNativeBreakpoints"] = function(req) {
-	this.sendResponse(req.id, true, {result: true});
+	this.sendResponse(req.id, {result: true});
 }
 
 BrowserHandler.prototype["Debugger.canSetScriptSource"] = function(req) {
-	this.sendResponse(req.id, true, {result: false});
+	this.sendResponse(req.id, {result: true});
+}
+
+BrowserHandler.prototype["Debugger.setScriptSource"] = function(req) {
+	this.client.changeLive(req.params.scriptId, false, req.params.scriptSource, function(resp) {
+		this.sendResponse(req.id);
+
+		if (!resp.success) {
+			// NOTE: This won't work if we're paused at a breakpoint -- script becomes desynchronized
+			this.addConsoleMessage("error", "--- Editing source while at a breakpoint is not supported.  Please refresh the page to resynchronize.");
+		}
+	}.bind(this));
 }
 
 BrowserHandler.prototype["Page.canOverrideDeviceMetrics"] = function(req) {
-	this.sendResponse(req.id, true, {result: false});
+	this.sendResponse(req.id, {result: false});
 
 	// Trigger onLoad event
 	this.onLoad();
@@ -822,12 +848,12 @@ BrowserHandler.prototype["Page.canOverrideDeviceMetrics"] = function(req) {
 
 BrowserHandler.prototype["Debugger.enable"] = function(req) {
 	console.log("Inspect: Enabled Debugger");
-	this.sendResponse(req.id, true);
+	this.sendResponse(req.id);
 }
 
 BrowserHandler.prototype["Debugger.disable"] = function(req) {
 	console.log("Inspect: Disabled Debugger");
-	this.sendResponse(req.id, false, {message: "Cannot disable debugger.  It is unstoppable!"});
+	this.sendResponse(req.id);
 }
 
 BrowserHandler.prototype["Debugger.setPauseOnExceptions"] = function(req) {
@@ -843,7 +869,7 @@ BrowserHandler.prototype["Debugger.setPauseOnExceptions"] = function(req) {
 	}
 
 	this.client.setExceptionBreak(type, enabled, function(obj) {
-		this.sendResponse(req.id, obj.success);
+		this.sendResponse(req.id);
 	}.bind(this));
 }
 
@@ -854,7 +880,7 @@ BrowserHandler.prototype["Debugger.setBreakpointsActive"] = function(req) {
 
 	this.breakpointsActive = active;
 
-	this.sendResponse(req.id, true);
+	this.sendResponse(req.id);
 }
 
 BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
@@ -870,7 +896,7 @@ BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
 				scriptId: String(actual[ii].script_id)
 			});
 		}
-		this.sendResponse(req.id, true, {
+		this.sendResponse(req.id, {
 			breakpointId: String(resp.body.breakpoint),
 			locations: locations
 		});
@@ -881,25 +907,25 @@ BrowserHandler.prototype["Debugger.removeBreakpoint"] = function(req) {
 	var id = req.params.breakpointId;
 
 	this.client.clearBreakpoint(id, function(resp) {
-		this.sendResponse(req.id, resp.success);
+		this.sendResponse(req.id);
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.stepInto"] = function(req) {
 	this.client.resume('in', 1, function(resp) {
-		this.sendResponse(req.id, resp.success);
+		this.sendResponse(req.id);
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.stepOver"] = function(req) {
 	this.client.resume('next', 1, function(resp) {
-		this.sendResponse(req.id, resp.success);
+		this.sendResponse(req.id);
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.stepOut"] = function(req) {
 	this.client.resume('out', 1, function(resp) {
-		this.sendResponse(req.id, resp.success);
+		this.sendResponse(req.id);
 	}.bind(this));
 }
 
@@ -907,13 +933,13 @@ BrowserHandler.prototype["Debugger.pause"] = function(req) {
 	this.breakpointsActive = true;
 
 	this.client.suspend(function(resp) {
-		this.sendResponse(req.id, resp.success);
+		this.sendResponse(req.id);
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.resume"] = function(req) {
 	this.client.exitBreak(function(resp) {
-		this.sendResponse(req.id, resp.success);
+		this.sendResponse(req.id);
 		this.sendEvent("Debugger.resumed");
 	}.bind(this));
 }
@@ -922,12 +948,12 @@ BrowserHandler.prototype["Debugger.evaluateOnCallFrame"] = function(req) {
 	this.client.evaluate(req.params.expression, req.params.callFrameId, function(resp) {
 		// If evaulation succeeded,
 		if (resp.success) {
-			this.sendResponse(req.id, true, {
+			this.sendResponse(req.id, {
 				result: getRemoteObject(resp.body),
 				wasThrown: false
 			});
 		} else {
-			this.sendResponse(req.id, true, {
+			this.sendResponse(req.id, {
 				result: {
 					type: "error",
 					description: resp.message
@@ -943,14 +969,14 @@ BrowserHandler.prototype["Debugger.getScriptSource"] = function(req) {
 
 	this.client.getScriptSource(scriptId, function(resp) {
 		if (!resp.success || !resp.body[0] || !resp.body[0].source) {
-			this.sendResponse(req.id, false, {
+			this.sendResponse(req.id, {
 				scriptSource: "Unable to load source file.  Try reloading the page"
 			});
 		} else {
 			// Other info ignored: lineOffset, script name, line count
 			var source = resp.body[0].source;
 
-			this.sendResponse(req.id, resp.success, {
+			this.sendResponse(req.id, {
 				scriptSource: source
 			});
 		}
@@ -961,20 +987,20 @@ BrowserHandler.prototype["Debugger.getScriptSource"] = function(req) {
 //// Profiler Messages
 
 BrowserHandler.prototype["Profiler.causesRecompilation"] = function(req) {
-	this.sendResponse(req.id, true, {result: false});
+	this.sendResponse(req.id, {result: false});
 }
 
 BrowserHandler.prototype["Profiler.isSampling"] = function(req) {
-	this.sendResponse(req.id, true, {result: true});
+	this.sendResponse(req.id, {result: true});
 }
 
 BrowserHandler.prototype["Profiler.hasHeapProfiler"] = function(req) {
-	this.sendResponse(req.id, true, {result: true});
+	this.sendResponse(req.id, {result: true});
 }
 
 BrowserHandler.prototype["Profiler.enable"] = function(req) {
 	console.log("Inspect: Enabled Profiler");
-	this.sendResponse(req.id, true);
+	this.sendResponse(req.id);
 }
 
 BrowserHandler.prototype["Profiler.start"] = function(req) {
@@ -987,24 +1013,14 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 
 BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
 	console.log("Inspect: Get profile headers");
-	this.sendResponse(req.id, true, [
-	{
-		typeId: 1,
-		title: "title",
-		uid: 10,
-		isTemporary: false
-	}
-	]);
-	// TODO
 }
 
 BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 	console.log("Inspect: Get profile");
-	// TODO
 }
 
 BrowserHandler.prototype["Profiler.removeProfile"] = function(req) {
-	console.log("Inspect: Get profile");
+	console.log("Inspect: Remove profile");
 }
 
 BrowserHandler.prototype["Profiler.clearProfiles"] = function(req) {
@@ -1020,7 +1036,7 @@ BrowserHandler.prototype["Profiler.getObjectByHeapObjectId"] = function(req) {
 }
 
 BrowserHandler.prototype["Profiler.disable"] = function(req) {
-	this.sendResponse(req.id, false, {message: "Unable to disable profiler. It is unstoppable!"});
+	this.sendResponse(req.id);
 }
 
 
