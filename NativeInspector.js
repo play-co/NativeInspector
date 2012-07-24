@@ -195,7 +195,7 @@ ControlServer.prototype.initialize = function(client) {
 	this.sessions = new Array();
 	this.client = client;
 
-	var ws = io.listen(CONTROL_PORT);
+	var ws = io.listen(CONTROL_PORT, {transports: ['websocket']});
 
 	ws.configure(function() {
 		ws.set('transports', ['websocket']);
@@ -290,7 +290,7 @@ BrowserServer.prototype.initialize = function(app, client) {
 	this.sessions = new Array();
 	this.client = client;
 
-	var ws = io.listen(app);
+	var ws = io.listen(app, {transports: ['websocket']});
 
 	ws.configure(function() {
 		ws.set('transports', ['websocket']);
