@@ -1520,7 +1520,11 @@ Client.prototype.request = function(msg, callback) {
 	// Buffer is built into node.js
 	var data = 'Content-Length: ' + Buffer.byteLength(serialized) + '\r\n\r\n' + serialized;
 
-	this.socket.write(data);
+	try {
+		this.socket.write(data);
+	} catch (err) {
+		// Pass
+	}
 }
 
 
