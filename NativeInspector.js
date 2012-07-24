@@ -422,13 +422,11 @@ BrowserSession.prototype.initialize = function(socket, server, client) {
 	this.last_id = null; // For fast response path
 	this.loaded = false;
 	this.connected = false;
-	this.breakpointsActive = true;
 
 	this.handler = new BrowserHandler();
 
 	// Subscribe to events from the debugger client
 	client.pubsub.subscribe(this, "connect", this.onDebuggerConnect.bind(this));
-	client.pubsub.subscribe(this, "event", this.onDebuggerEvent.bind(this));
 	client.pubsub.subscribe(this, "close", this.onDebuggerClose.bind(this));
 
 	// Manually invoke onDebuggerConnect() if already connected before browser (common case)
@@ -521,55 +519,6 @@ function convertCallFrames(frames) {
 	return result;
 }
 
-BrowserSession.prototype.handleBreak = function(body) {
-	if (this.breakpointsActive) {
-		this.client.backtrace(function(resp) {
-			var frames = convertCallFrames(resp.body.frames);
-
-			this.sendEvent("Debugger.paused", {
-				callFrames: frames,
-				reason: "Breakpoint @ " + body.script.name + ":" + body.script.lineOffset,
-				data: "Source line text: " + body.sourceLineText
-			});
-		}.bind(this));
-	} else {
-		this.client.exitBreak(function(resp) {
-			this.sendEvent("Debugger.resumed");
-		}.bind(this));
-	}
-}
-
-BrowserSession.prototype.onDebuggerEvent = function(obj) {
-	switch (obj.event) {
-	case "break":
-		this.handleBreak(obj.body);
-		break;
-	case "afterCompile":
-		if (obj.body && obj.body.script) {
-			this.addConsoleMessage("info", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
-
-			var script = obj.body.script;
-
-			this.sendEvent("Debugger.scriptParsed", {
-				scriptId: String(script.id),
-				url: (script.name === undefined) ? "(unnamed)" : String(script.name),
-				startLine: script.lineOffset,
-				startColumn: script.columnOffset,
-				endLine: script.lineCount,
-				endColumn: 0,
-				isContentScript: true,
-				sourceMapURL: script.name
-			});
-		}
-		break;
-	case "scriptCollected":
-		// Ignore script collected (GC?) notifications
-		break;
-	default:
-		console.log("Inspect: Unhandled debugger event ", JSON.stringify(obj));
-	}
-}
-
 BrowserSession.prototype.onDebuggerClose = function() {
 	console.log("Inspect: Browser notified of debugger close");
 
@@ -644,7 +593,7 @@ BrowserSession.prototype.sendEvent = function(name, data) {
 }
 
 BrowserSession.prototype.sendProfileHeader = function(title, uid, type) {
-	this.sendEvent("Profiler.addProfileHeader", {
+	this.server.broadcastEvent("Profiler.addProfileHeader", {
 		header: {
 			title: title,
 			uid: uid,
@@ -938,7 +887,7 @@ BrowserHandler.prototype["Debugger.setBreakpointsActive"] = function(req) {
 
 	console.log("Inspect: setBreakpointsActive(", active, ")");
 
-	this.breakpointsActive = active;
+	this.client.breakpointsActive = active;
 
 	this.sendResponse(req.id);
 }
@@ -990,7 +939,7 @@ BrowserHandler.prototype["Debugger.stepOut"] = function(req) {
 }
 
 BrowserHandler.prototype["Debugger.pause"] = function(req) {
-	this.breakpointsActive = true;
+	this.client.breakpointsActive = true;
 
 	this.client.suspend(function(resp) {
 		this.sendResponse(req.id);
@@ -1000,7 +949,7 @@ BrowserHandler.prototype["Debugger.pause"] = function(req) {
 BrowserHandler.prototype["Debugger.resume"] = function(req) {
 	this.client.exitBreak(function(resp) {
 		this.sendResponse(req.id);
-		this.sendEvent("Debugger.resumed");
+		this.server.broadcastEvent("Debugger.resumed");
 	}.bind(this));
 }
 
@@ -1071,7 +1020,7 @@ BrowserHandler.prototype["Profiler.start"] = function(req) {
 	console.log("Inspect: Start profiling " + title);
 
 	this.client.evaluate('PROFILER.cpuProfiler.startProfiling("' + title + '")', null, function(resp) {
-		this.sendEvent("Profiler.setRecordingProfile", {
+		this.server.broadcastEvent("Profiler.setRecordingProfile", {
 			isProfiling: resp.success
 		});
 	}.bind(this));
@@ -1086,7 +1035,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 		this.activeTitle = null;
 
 		this.client.evaluate('PROFILER.cpuProfiler.stopProfiling("' + title + '")', null, function(resp) {
-			this.sendEvent("Profiler.setRecordingProfile", {
+			this.server.broadcastEvent("Profiler.setRecordingProfile", {
 				isProfiling: false
 			});
 
@@ -1388,14 +1337,18 @@ ProfileCache.prototype.clear = function() {
 
 Client = Class.create();
 
-Client.prototype.initialize = function() {
+Client.prototype.initialize = function(httpd) {
+	this.httpd = httpd;
+
 	this.callbacks = new ResponseCallbacks();
 	this.pubsub = new PubSub();
 	this.deframe = new Deframer(this.message.bind(this));
 	this.profileCache = new ProfileCache();
+	this.browserServer = new BrowserServer();
 
 	this.connecting = true;
 	this.connected = false;
+	this.breakpointsActive = true;
 
 	// Set up socket
 	var s = new net.Socket({type: "tcp4"});
@@ -1405,6 +1358,12 @@ Client.prototype.initialize = function() {
 	s.on('data', this.data.bind(this));
 	s.on('close', this.close.bind(this));
 	s.connect(DEBUG_PORT);
+
+	// One browser server accepting multiple browsers
+	this.browserServer = new BrowserServer(httpd, this);
+
+	// One control server accepting multiple control connexions
+	this.controlServer = new ControlServer(this.browserServer, this);
 
 	console.log("Inspect: Debug client started");
 }
@@ -1457,8 +1416,8 @@ Client.prototype.message = function(msg) {
 			break;
 
 		case 'event':
-			// Notify browser sessions
-			this.pubsub.publish('event', obj);
+			// Handle events
+			this.handleEvent(obj);
 			break;
 		}
 	}
@@ -1500,6 +1459,59 @@ Client.prototype.request = function(msg, callback) {
 	var data = 'Content-Length: ' + Buffer.byteLength(serialized) + '\r\n\r\n' + serialized;
 
 	this.socket.write(data);
+}
+
+
+//// Client Incoming Messages
+// Messages from the debug server are handled here
+
+Client.prototype.handleBreak = function(body) {
+	if (this.breakpointsActive) {
+		this.backtrace(function(resp) {
+			var frames = convertCallFrames(resp.body.frames);
+
+			this.browserServer.broadcastEvent("Debugger.paused", {
+				callFrames: frames,
+				reason: "Breakpoint @ " + body.script.name + ":" + body.script.lineOffset,
+				data: "Source line text: " + body.sourceLineText
+			});
+		}.bind(this));
+	} else {
+		this.exitBreak(function(resp) {
+			this.browserServer.broadcastEvent("Debugger.resumed");
+		}.bind(this));
+	}
+}
+
+Client.prototype.handleEvent = function(obj) {
+	switch (obj.event) {
+	case "break":
+		this.handleBreak(obj.body);
+		break;
+	case "afterCompile":
+		if (obj.body && obj.body.script) {
+			this.browserServer.addConsoleMessage("info", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
+
+			var script = obj.body.script;
+
+			this.browserServer.broadcastEvent("Debugger.scriptParsed", {
+				scriptId: String(script.id),
+				url: (script.name === undefined) ? "(unnamed)" : String(script.name),
+				startLine: script.lineOffset,
+				startColumn: script.columnOffset,
+				endLine: script.lineCount,
+				endColumn: 0,
+				isContentScript: true,
+				sourceMapURL: script.name
+			});
+		}
+		break;
+	case "scriptCollected":
+		// Ignore script collected (GC?) notifications
+		break;
+	default:
+		console.log("Inspect: Unhandled debugger event ", JSON.stringify(obj));
+	}
 }
 
 
@@ -1733,10 +1745,4 @@ Client.prototype.lookup = function(handles, callback) {
 //// Main Engine Ignition!
 
 // One shared debug client for all browsers
-var myAwesomeDebugClient = new Client();
-
-// One browser server accepting multiple browsers
-var myAwesomeBrowserServer = new BrowserServer(myAwesomeHTTPD, myAwesomeDebugClient);
-
-// One control server accepting multiple control connexions
-var myAwesomeControlServer = new ControlServer(myAwesomeBrowserServer, myAwesomeDebugClient);
+var myAwesomeDebugClient = new Client(myAwesomeHTTPD);
