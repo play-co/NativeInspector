@@ -98,7 +98,8 @@ WebInspector.CPUProfileView = function(profile)
         this._updatePercentButton();
     }
 
-    this._linkifier = new WebInspector.Linkifier(new WebInspector.Linkifier.DefaultFormatter(30));
+	// Removed link max length -cat
+    this._linkifier = new WebInspector.Linkifier(new WebInspector.Linkifier.DefaultFormatter());
 
     ProfilerAgent.getProfile(this.profile.typeId, this.profile.uid, profileCallback.bind(this));
 }

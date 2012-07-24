@@ -344,6 +344,69 @@ BrowserServer.prototype.clearConsoleMessages = function() {
 }
 
 
+//// Object serialization protocol for V8 debug server
+
+function getRemoteObject(obj) {
+	var result = {
+		type: obj.type,
+		className: obj.className,
+		description: obj.text || obj.value,
+		objectId: "0:0:" + obj.handle,
+		value: obj.value || obj.text
+	};
+
+	switch (obj.type) {
+	case "object":
+		result.description = obj.className || "Object";
+		break;
+	case "function":
+		result.description = obj.text || "function()";
+	}
+
+	return result;
+}
+
+function simpleRemoteObject(obj) {
+	return obj.value || obj.text;
+}
+
+function reconstructObject(resp) {
+	// Convert refs array into a set
+	var refs = {};
+	if (resp.refs) {
+		for (var ii = 0; ii < resp.refs.length; ++ii) {
+			var r = resp.refs[ii];
+			refs[r.handle] = r;
+		}
+	}
+
+	// Get an array of object properties
+	var profile = {};
+	if (resp.body && resp.body.properties) {
+		for (var ii = 0; ii < resp.body.properties.length; ++ii) {
+			var p = resp.body.properties[ii];
+			profile[p.name] = simpleRemoteObject(refs[p.ref]);
+		}
+	}
+
+	return profile;
+}
+
+function joinData(container) {
+	var data = '';
+
+	var len = container.length;
+	if (len) {
+		for (var ii = 0; ii < len; ++ii) {
+			data += container[ii];
+		}
+	}
+
+	return data;
+}
+
+
+
 //// Browser Session
 // Connexion with backend Web Inspector JavaScript
 
@@ -489,7 +552,7 @@ BrowserSession.prototype.onDebuggerEvent = function(obj) {
 
 			this.sendEvent("Debugger.scriptParsed", {
 				scriptId: String(script.id),
-				url: (script.name === undefined) ? "<stuff you injected>" : String(script.name),
+				url: (script.name === undefined) ? "(unnamed)" : String(script.name),
 				startLine: script.lineOffset,
 				startColumn: script.columnOffset,
 				endLine: script.lineCount,
@@ -580,6 +643,18 @@ BrowserSession.prototype.sendEvent = function(name, data) {
 	}));
 }
 
+BrowserSession.prototype.sendProfileHeader = function(title, uid, type) {
+	this.sendEvent("Profiler.addProfileHeader", {
+		header: {
+			title: title,
+			uid: uid,
+			typeId: type
+		}
+	});
+
+	console.log("Sending profile header: " + title + " #" + uid + " type " + type);
+}
+
 // Called whenever loaded and connected just became true, from any other state arriving in any order
 BrowserSession.prototype.onLoadAndDebug = function() {
 	// Clear scripts view
@@ -602,19 +677,22 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 		for (var ii = 0, len = obj.body.length; ii < len; ++ii) {
 			var script = obj.body[ii];
 
-			if (script.type === "script") {
-				this.sendEvent("Debugger.scriptParsed", {
-					scriptId: String(script.id),
-					url: (script.name === undefined) ? "<stuff you injected>" : String(script.name),
-					startLine: script.lineOffset,
-					startColumn: script.columnOffset,
-					endLine: script.lineCount,
-					endColumn: 0,
-					isContentScript: true,
-					sourceMapURL: script.name
-				});
-			}
+			this.sendEvent("Debugger.scriptParsed", {
+				scriptId: String(script.id),
+				url: (script.name === undefined) ? "(unnamed)" : String(script.name),
+				startLine: script.lineOffset,
+				startColumn: script.columnOffset,
+				endLine: script.lineCount,
+				endColumn: 0,
+				isContentScript: true,
+				sourceMapURL: script.name
+			});
 		}
+	}.bind(this));
+
+	// Print banner
+	this.client.version(function(resp) {
+		this.addConsoleMessage("info", "--- Initialization procedures completed.  Device uses V8 version " + resp.body.V8Version + ".");
 	}.bind(this));
 }
 
@@ -624,6 +702,7 @@ BrowserSession.prototype.onLoad = function() {
 
 		this.addConsoleMessage("info", "The Native Web Inspector allows you to debug and profile JavaScript code running live on a device.");
 		this.addConsoleMessage("info", "The application must have been built with the --debug flag.");
+		this.addConsoleMessage("info", "To use the profiler, it must also be built with --enable-android-jsprof.");
 		this.addConsoleMessage("info", "And it can only debug one application at a time, so be sure to force close other debug-mode applications.");
 
 		if (this.connected) {
@@ -685,27 +764,6 @@ BrowserHandler.prototype.initialize = function() {
 
 //// Runtime Messages
 
-function getRemoteObject(obj) {
-	var result = {
-		type: obj.type,
-		className: obj.className,
-		description: obj.text || obj.value,
-		objectId: "0:0:" + obj.handle,
-		value: obj.text || obj.value
-		//subtype: "null"
-	};
-
-	switch (obj.type) {
-	case "object":
-		result.description = obj.className || "Object";
-		break;
-	case "function":
-		result.description = obj.text || "function()";
-	}
-
-	return result;
-}
-
 BrowserHandler.prototype["Runtime.releaseObjectGroup"] = function(req) {
 	this.sendResponse(req.id);
 }
@@ -756,7 +814,7 @@ BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 
 			// Get an array of object properties
 			var objects = [];
-			if (resp.body && resp.body.object) {
+			if (resp.body && resp.body.object && resp.body.object.properties) {
 				for (key in resp.body.object.properties) {
 					var property = resp.body.object.properties[key];
 
@@ -789,23 +847,25 @@ BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 			if (resp.body && resp.body[handle]) {
 				var obj = resp.body[handle];
 
-				for (var ii = 0; ii < obj.properties.length; ++ii) {
-					var property = obj.properties[ii];
+				if (obj.properties) {
+					for (var ii = 0; ii < obj.properties.length; ++ii) {
+						var property = obj.properties[ii];
 
-					var p = {
-						name: String(property.name),
-						value: getRemoteObject(refs[property.ref])
-					};
+						var p = {
+							name: String(property.name),
+							value: getRemoteObject(refs[property.ref])
+						};
 
-					objects.push(p);
+						objects.push(p);
+					}
 				}
-			}
-
-			if (obj.protoObject) {
-				objects.push({
-					name: "__proto__",
-					value: getRemoteObject(refs[obj.protoObject.ref])
-				});
+			
+				if (obj.protoObject) {
+					objects.push({
+						name: "__proto__",
+						value: getRemoteObject(refs[obj.protoObject.ref])
+					});
+				}
 			}
 
 			this.sendResponse(req.id, {result: objects});
@@ -852,7 +912,7 @@ BrowserHandler.prototype["Debugger.enable"] = function(req) {
 }
 
 BrowserHandler.prototype["Debugger.disable"] = function(req) {
-	console.log("Inspect: Disabled Debugger");
+	console.log("Inspect: Ignored request to disable debugger");
 	this.sendResponse(req.id);
 }
 
@@ -1005,37 +1065,116 @@ BrowserHandler.prototype["Profiler.enable"] = function(req) {
 
 BrowserHandler.prototype["Profiler.start"] = function(req) {
 	console.log("Inspect: Start profiler");
+
+	var uid = "0"; // TODO: Roll
+
+	this.client.evaluate('PROFILER.cpuProfiler.startProfiling("org.webkit.profiles.user-initiated.' + uid + '")', null, function(resp) {
+		this.sendEvent("Profiler.setRecordingProfile", {
+			isProfiling: resp.success
+		});
+	}.bind(this));
 }
 
 BrowserHandler.prototype["Profiler.stop"] = function(req) {
 	console.log("Inspect: Stop profiler");
+
+	var uid = "0";
+	var title = "org.webkit.profiles.user-initiated." + uid;
+
+	this.client.evaluate('PROFILER.cpuProfiler.stopProfiling("' + title + '")', null, function(resp) {
+		this.sendEvent("Profiler.setRecordingProfile", {
+			isProfiling: false
+		});
+
+		if (resp.success) {
+			var obj = reconstructObject(resp);
+			var data = JSON.parse(joinData(obj));
+
+			this.client.profileCache.set('CPU', obj.uid, data);
+
+			this.sendProfileHeader(obj.title, obj.uid, 'CPU');
+		}
+	}.bind(this));
 }
 
 BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
 	console.log("Inspect: Get profile headers");
+
+	this.client.evaluate("PROFILER.cpuProfiler.getProfileHeaders()", null, function(resp) {
+		var obj = reconstructObject(resp);
+
+		console.log("Inspect: Got " + obj.length + " profile headers");
+
+		for (var ii = 0, len = obj.length; ii < len; ++ii) {
+			var profile = JSON.parse(obj[ii]);
+
+			this.sendProfileHeader(profile.title, profile.uid, profile.typeId);
+		}
+	}.bind(this));
+
+	// TODO: HEAP
 }
 
 BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
-	console.log("Inspect: Get profile");
+	console.log("Inspect: Get " + req.params.type + " profile #" + req.params.uid);
+
+	var profile = this.client.profileCache.get(req.params.type, req.params.uid);
+
+	if (profile) {
+		this.sendResponse(req.id, {
+			"profile": {
+				"head": profile
+			}
+		});
+	} else {
+		if (req.params.type === "CPU") {
+			this.client.evaluate("PROFILER.cpuProfiler.getProfile(" + req.params.uid + ")", null, function(resp) {
+				var obj = reconstructObject(resp);
+				var data = JSON.parse(joinData(obj));
+
+				this.sendResponse(req.id, {
+					"profile": {
+						"head": data
+					}
+				});
+
+				this.client.profileCache.set(req.params.type, req.params.uid, data);
+			}.bind(this));
+		} else {
+			// TODO
+		}
+	}
 }
 
 BrowserHandler.prototype["Profiler.removeProfile"] = function(req) {
-	console.log("Inspect: Remove profile");
+	console.log("Inspect: Remove profile is unsupported by V8");
+
+	// TODO: Revisit for heap profiles
 }
 
 BrowserHandler.prototype["Profiler.clearProfiles"] = function(req) {
 	console.log("Inspect: Clear profiles");
+
+	this.client.evaluate("PROFILER.cpuProfiler.deleteAllProfiles()", null, function(resp) {
+		this.sendResponse(req.id);
+	}.bind(this));
 }
 
 BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
 	console.log("Inspect: Take heap snapshot");
+
+	// TODO
 }
 
 BrowserHandler.prototype["Profiler.getObjectByHeapObjectId"] = function(req) {
 	console.log("Inspect: Get heap object");
+
+	// TODO
 }
 
 BrowserHandler.prototype["Profiler.disable"] = function(req) {
+	console.log("Inspect: Ignored request to disable profiler");
+
 	this.sendResponse(req.id);
 }
 
@@ -1193,6 +1332,33 @@ Deframer.prototype.clear = function() {
 }
 
 
+//// ProfileCache
+// Cached results from the connected debugger
+
+ProfileCache = Class.create();
+
+ProfileCache.prototype.initialize = function() {
+	this.clear();
+}
+
+ProfileCache.prototype.get = function(type, uid) {
+	return this.cache[type][uid];
+}
+
+ProfileCache.prototype.set = function(type, uid, data) {
+	this.cache[type][uid] = data;
+}
+
+ProfileCache.prototype.clear = function() {
+	this.cache = {
+		'CPU': {
+		},
+		'HEAP': {
+		}
+	};
+}
+
+
 //// Debug Client
 // V8 debug protocol client
 
@@ -1202,6 +1368,7 @@ Client.prototype.initialize = function() {
 	this.callbacks = new ResponseCallbacks();
 	this.pubsub = new PubSub();
 	this.deframe = new Deframer(this.message.bind(this));
+	this.profileCache = new ProfileCache();
 
 	this.connecting = true;
 	this.connected = false;
@@ -1243,6 +1410,9 @@ Client.prototype.message = function(msg) {
 		// If not already connected,
 		if (!this.connected) {
 			console.log("Inspect: Debug client connected");
+
+			// Flush profile cache
+			this.profileCache.clear();
 
 			// Notify browser sessions
 			this.connected = true;
