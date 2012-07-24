@@ -608,7 +608,7 @@ BrowserSession.prototype.sendProfileHeader = function(title, uid, type) {
 		}
 	});
 
-	console.log("Sending profile header: " + title + " #" + uid + " type " + type);
+	console.log("Inspect: Sending profile header: " + title + " #" + uid + " type " + type);
 }
 
 // Called whenever loaded and connected just became true, from any other state arriving in any order
@@ -1052,7 +1052,6 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 				var data = JSON.parse(joinData(obj));
 
 				this.client.profileCache.gotHeader('CPU', obj.uid, obj.title);
-
 				this.client.profileCache.set('CPU', obj.uid, data);
 
 				this.sendProfileHeader(obj.title, obj.uid, 'CPU');
@@ -1093,11 +1092,21 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 	var profile = this.client.profileCache.get(req.params.type, req.params.uid);
 
 	if (profile) {
-		this.sendResponse(req.id, {
-			"profile": {
-				"head": profile
-			}
-		});
+		if (req.params.type === "CPU") {
+			this.sendResponse(req.id, {
+				"profile": {
+					"head": profile
+				}
+			});
+		} else if (req.params.type === "HEAP") {
+			this.sendEvent("Profiler.addHeapSnapshotChunk", {
+				uid: profile.snapshot.uid,
+				chunk: JSON.stringify(profile)
+			});
+			this.sendEvent("Profiler.finishHeapSnapshot", {
+				uid: profile.snapshot.uid
+			});
+		}
 	} else {
 		if (req.params.type === "CPU") {
 			this.client.evaluate("PROFILER.cpuProfiler.getProfile(" + req.params.uid + ")", null, function(resp) {
@@ -1112,8 +1121,19 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 
 				this.client.profileCache.set(req.params.type, req.params.uid, data);
 			}.bind(this));
-		} else {
-			// TODO
+		} else if (req.params.type === "HEAP") {
+			this.client.evaluate("PROFILER.heapProfiler.getProfile(" + req.params.uid + ")", null, function(resp) {
+				var obj = reconstructObject(resp);
+				var data = JSON.parse(joinData(obj));
+
+				this.sendResponse(req.id, {
+					"profile": {
+						"head": data
+					}
+				});
+
+				this.client.profileCache.set(req.params.type, req.params.uid, data);
+			}.bind(this));
 		}
 	}
 }
@@ -1133,9 +1153,41 @@ BrowserHandler.prototype["Profiler.clearProfiles"] = function(req) {
 }
 
 BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
-	console.log("Inspect: Take heap snapshot");
+	console.log("Inspect: Taking heap snapshot...");
+	this.sendResponse(req.id);
 
-	// TODO
+	var name = "TEST";
+
+	this.sendEvent("Profiler.reportHeapSnapshotProgress", {
+		done: 10,
+		total: 100
+	});
+
+	this.client.evaluate('PROFILER.heapProfiler.takeSnapshot("' + name +'")', null, function(resp) {
+		console.log("Inspect: Heap snapshot response received.  Repackaging snapshot...");
+
+		this.sendEvent("Profiler.reportHeapSnapshotProgress", {
+			done: 70,
+			total: 100
+		});
+
+		var obj = reconstructObject(resp);
+		var str = joinData(obj);
+		var data = JSON.parse(str);
+
+		this.sendEvent("Profiler.reportHeapSnapshotProgress", {
+			done: 100,
+			total: 100
+		});
+
+		console.log("Inspect: Heap snapshot repackaged (" + str.length + " bytes).  Delivering to browser...");
+
+		this.sendProfileHeader("TEST", data.snapshot.uid, "HEAP");
+
+		this.client.profileCache.set('HEAP', data.snapshot.uid, data);
+
+		console.log("Inspect: Heap snapshot delivered to browser");
+	}.bind(this));
 }
 
 BrowserHandler.prototype["Profiler.getObjectByHeapObjectId"] = function(req) {
