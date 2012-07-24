@@ -181,9 +181,7 @@ var myAwesomeHTTPD = http.createServer(function(req, res) {
 			res.end("!!ERROR!! File not found: " + req.url);
 			log(404, req.url, ip, err);
 		});
-}).listen(BROWSER_PORT);
-
-console.log("Inspect: Lurking at http://0.0.0.0:" + BROWSER_PORT);
+});
 
 
 //// Control Server
@@ -659,7 +657,6 @@ BrowserSession.prototype.onLoad = function() {
 
 		this.addConsoleMessage("info", "The Native Web Inspector allows you to debug and profile JavaScript code running live on a device.");
 		this.addConsoleMessage("info", "The application must have been built with the --debug flag.");
-		this.addConsoleMessage("info", "To use the profiler, it must also be built with --enable-android-jsprof.");
 		this.addConsoleMessage("info", "And it can only debug one application at a time, so be sure to force close other debug-mode applications.");
 
 		if (this.connected) {
@@ -1811,3 +1808,7 @@ Client.prototype.lookup = function(handles, callback) {
 
 // One shared debug client for all browsers
 var myAwesomeDebugClient = new Client(myAwesomeHTTPD);
+
+// One shared web server
+myAwesomeHTTPD.listen(BROWSER_PORT);
+console.log("Inspect: Lurking at http://0.0.0.0:" + BROWSER_PORT);
