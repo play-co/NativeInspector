@@ -1064,11 +1064,13 @@ BrowserHandler.prototype["Profiler.enable"] = function(req) {
 }
 
 BrowserHandler.prototype["Profiler.start"] = function(req) {
-	console.log("Inspect: Start profiler");
+	var uid = this.client.profileCache.getNextUid('CPU');
+	var title = "org.webkit.profiles.user-initiated." + uid;
+	this.activeTitle = title;
 
-	var uid = "0"; // TODO: Roll
+	console.log("Inspect: Start profiling " + title);
 
-	this.client.evaluate('PROFILER.cpuProfiler.startProfiling("org.webkit.profiles.user-initiated.' + uid + '")', null, function(resp) {
+	this.client.evaluate('PROFILER.cpuProfiler.startProfiling("' + title + '")', null, function(resp) {
 		this.sendEvent("Profiler.setRecordingProfile", {
 			isProfiling: resp.success
 		});
@@ -1076,25 +1078,30 @@ BrowserHandler.prototype["Profiler.start"] = function(req) {
 }
 
 BrowserHandler.prototype["Profiler.stop"] = function(req) {
-	console.log("Inspect: Stop profiler");
+	var title = this.activeTitle;
 
-	var uid = "0";
-	var title = "org.webkit.profiles.user-initiated." + uid;
+	console.log("Inspect: Stop profiling " + title);
 
-	this.client.evaluate('PROFILER.cpuProfiler.stopProfiling("' + title + '")', null, function(resp) {
-		this.sendEvent("Profiler.setRecordingProfile", {
-			isProfiling: false
-		});
+	if (title) {
+		this.activeTitle = null;
 
-		if (resp.success) {
-			var obj = reconstructObject(resp);
-			var data = JSON.parse(joinData(obj));
+		this.client.evaluate('PROFILER.cpuProfiler.stopProfiling("' + title + '")', null, function(resp) {
+			this.sendEvent("Profiler.setRecordingProfile", {
+				isProfiling: false
+			});
 
-			this.client.profileCache.set('CPU', obj.uid, data);
+			if (resp.success) {
+				var obj = reconstructObject(resp);
+				var data = JSON.parse(joinData(obj));
 
-			this.sendProfileHeader(obj.title, obj.uid, 'CPU');
-		}
-	}.bind(this));
+				this.client.profileCache.gotHeader('CPU', obj.uid, obj.title);
+
+				this.client.profileCache.set('CPU', obj.uid, data);
+
+				this.sendProfileHeader(obj.title, obj.uid, 'CPU');
+			}
+		}.bind(this));
+	}
 }
 
 BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
@@ -1107,6 +1114,8 @@ BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
 
 		for (var ii = 0, len = obj.length; ii < len; ++ii) {
 			var profile = JSON.parse(obj[ii]);
+
+			this.client.profileCache.gotHeader(profile.typeId, profile.uid, profile.title);
 
 			this.sendProfileHeader(profile.title, profile.uid, profile.typeId);
 		}
@@ -1349,12 +1358,27 @@ ProfileCache.prototype.set = function(type, uid, data) {
 	this.cache[type][uid] = data;
 }
 
+ProfileCache.prototype.getNextUid = function(type) {
+	return this.nextUID[type]++;
+}
+
+ProfileCache.prototype.gotHeader = function(type, uid, title) {
+	if (this.nextUID[type] <= uid) {
+		this.nextUID[type] = uid + 1;
+	}
+}
+
 ProfileCache.prototype.clear = function() {
 	this.cache = {
 		'CPU': {
 		},
 		'HEAP': {
 		}
+	};
+
+	this.nextUID = {
+		'CPU': 1,
+		'HEAP': 1
 	};
 }
 
