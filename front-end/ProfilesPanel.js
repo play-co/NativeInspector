@@ -1198,8 +1198,9 @@ WebInspector.ProfileSidebarTreeElement.prototype = {
 
     ondelete: function()
     {
-        this.treeOutline.panel._removeProfileHeader(this.profile);
-        return true;
+		// Removed delete feature because this is unsupported -cat
+        //this.treeOutline.panel._removeProfileHeader(this.profile);
+        //return true;
     },
 
     get mainTitle()

@@ -519,6 +519,14 @@ function convertCallFrames(frames) {
 	return result;
 }
 
+BrowserSession.prototype.resetPanels = function() {
+	// Clear scripts view
+	this.sendEvent("Debugger.globalObjectCleared");
+
+	// Clear profiles view
+	this.sendEvent("Profiler.resetProfiles");
+}
+
 BrowserSession.prototype.onDebuggerClose = function() {
 	console.log("Inspect: Browser notified of debugger close");
 
@@ -528,8 +536,7 @@ BrowserSession.prototype.onDebuggerClose = function() {
 		if (this.loaded) {
 			this.addConsoleMessage("error", "--- Device disconnected.");
 
-			// Clear scripts view
-			this.sendEvent("Debugger.globalObjectCleared");
+			this.resetPanels();
 		}
 	}
 }
@@ -606,8 +613,7 @@ BrowserSession.prototype.sendProfileHeader = function(title, uid, type) {
 
 // Called whenever loaded and connected just became true, from any other state arriving in any order
 BrowserSession.prototype.onLoadAndDebug = function() {
-	// Clear scripts view
-	this.sendEvent("Debugger.globalObjectCleared");
+	this.resetPanels();
 
 	this.client.listBreakpoints(function(obj) {
 		var breakpoints = obj.body.breakpoints;
@@ -638,6 +644,8 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 			});
 		}
 	}.bind(this));
+
+	this.sendProfileHeaders();
 
 	// Print banner
 	this.client.version(function(resp) {
@@ -1053,9 +1061,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 	}
 }
 
-BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
-	console.log("Inspect: Get profile headers");
-
+BrowserSession.prototype.sendProfileHeaders = function() {
 	this.client.evaluate("PROFILER.cpuProfiler.getProfileHeaders()", null, function(resp) {
 		var obj = reconstructObject(resp);
 
@@ -1071,6 +1077,14 @@ BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
 	}.bind(this));
 
 	// TODO: HEAP
+}
+
+BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
+	console.log("Inspect: Get profile headers - ignored.  This is done on load");
+
+	// This is actually not the time to send these.  They should be sent
+	// on reconnect.
+	//this.sendProfileHeaders();
 }
 
 BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
