@@ -195,7 +195,7 @@ ControlServer.prototype.initialize = function(client) {
 	this.sessions = new Array();
 	this.client = client;
 
-	var ws = io.listen(CONTROL_PORT, {transports: ['websocket']});
+	var ws = io.listen(CONTROL_PORT);
 
 	ws.configure(function() {
 		ws.set('transports', ['websocket']);
@@ -290,7 +290,7 @@ BrowserServer.prototype.initialize = function(app, client) {
 	this.sessions = new Array();
 	this.client = client;
 
-	var ws = io.listen(app, {transports: ['websocket']});
+	var ws = io.listen(app);
 
 	ws.configure(function() {
 		ws.set('transports', ['websocket']);
@@ -1410,7 +1410,6 @@ Client.prototype.initialize = function(httpd) {
 	this.pubsub = new PubSub();
 	this.deframe = new Deframer(this.message.bind(this));
 	this.profileCache = new ProfileCache();
-	this.browserServer = new BrowserServer();
 
 	this.connecting = true;
 	this.connected = false;
