@@ -6,9 +6,9 @@ var io = require('socket.io');
 var child_process = require('child_process');
 var urllib = require('url');
 
-var BROWSER_PORT = 9555;
+var BROWSER_PORT = 9888;
 var DEBUG_PORT = 9222;
-var CONTROL_PORT = 9666;
+var CONTROL_PORT = 9889;
 var WEBROOT = require('path').join(__dirname, 'front-end');
 
 
