@@ -1088,7 +1088,32 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 		}
 	}.bind(this));
 
-	// TODO: HEAP
+	this.client.evaluate("PROFILER.heapProfiler.getSnapshotsCount()", null, function(resp) {
+		var count = resp.body.value;
+
+		for (var uid = 0; uid < count; ++uid) {
+			var profile = this.client.profileCache.get("HEAP", uid);
+
+			if (profile) {
+				this.sendEvent("Profiler.addHeapSnapshotChunk", {
+					uid: profile.snapshot.uid,
+					chunk: JSON.stringify(profile)
+				});
+				this.sendEvent("Profiler.finishHeapSnapshot", {
+					uid: profile.snapshot.uid
+				});
+			} else {
+				this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + uid + ")", null, function(resp) {
+					var obj = reconstructObject(resp);
+					var data = JSON.parse(joinData(obj));
+
+					this.sendProfileHeader(data.snapshot.title, data.snapshot.uid, "HEAP");
+
+					this.client.profileCache.set("HEAP", data.snapshot.uid, data);
+				}.bind(this));
+			}
+		}
+	}.bind(this));
 }
 
 BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
@@ -1134,7 +1159,7 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 				this.client.profileCache.set(req.params.type, req.params.uid, data);
 			}.bind(this));
 		} else if (req.params.type === "HEAP") {
-			this.client.evaluate("PROFILER.heapProfiler.getProfile(" + req.params.uid + ")", null, function(resp) {
+			this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + req.params.uid + ")", null, function(resp) {
 				var obj = reconstructObject(resp);
 				var data = JSON.parse(joinData(obj));
 
