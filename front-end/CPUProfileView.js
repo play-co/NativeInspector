@@ -175,6 +175,7 @@ WebInspector.CPUProfileView.prototype = {
 
     refreshVisibleData: function()
     {
+		// Changed to use rootNode() here -cat
         var child = this.dataGrid.rootNode().children[0];
         while (child) {
             child.refresh();
