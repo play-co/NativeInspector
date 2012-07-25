@@ -562,11 +562,11 @@ BrowserSession.prototype.message = function(req_str) {
 			var result = f.apply(this, [req]);
 		} else {
 			if (req.method.indexOf("Debugger") != -1) {
-				console.log('Inspect: Unhandled ', req.method);
+				console.log('Inspect: Unhandled ', req.method, " : ", JSON.stringify(req, undefined, 4));
 			} else if (req.method.indexOf("Runtime") != -1) {
 				console.log('Inspect: Unhandled ', req.method);
 			} else if (req.method.indexOf("Profiler") != -1) {
-				console.log('Inspect: Unhandled ', req.method);
+				console.log('Inspect: Unhandled ', req.method, " : ", JSON.stringify(req, undefined, 4));
 			}
 		}
 	} else {
@@ -629,16 +629,19 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 	this.client.getScripts(function(obj) {
 		for (var ii = 0, len = obj.body.length; ii < len; ++ii) {
 			var script = obj.body[ii];
+			var scriptName = (script.name === undefined) ? "(unnamed)" : String(script.name);
+			var sharedOffset = scriptName.indexOf("/shared");
+			var isContentScript = (sharedOffset == -1) || (sharedOffset > 2);
 
 			this.sendEvent("Debugger.scriptParsed", {
 				scriptId: String(script.id),
-				url: (script.name === undefined) ? "(unnamed)" : String(script.name),
+				url: scriptName,
 				startLine: script.lineOffset,
 				startColumn: script.columnOffset,
 				endLine: script.lineCount,
 				endColumn: 0,
-				isContentScript: true,
-				sourceMapURL: script.name
+				isContentScript: isContentScript,
+				sourceMapURL: scriptName 
 			});
 		}
 	}.bind(this));
@@ -836,6 +839,15 @@ BrowserHandler.prototype["Debugger.causesRecompilation"] = function(req) {
 
 BrowserHandler.prototype["Debugger.supportsNativeBreakpoints"] = function(req) {
 	this.sendResponse(req.id, {result: true});
+}
+
+BrowserHandler.prototype["Debugger.supportsSeparateScriptCompilationAndExecution"] = function(req) {
+	this.sendResponse(req.id, {result: false});
+}
+
+BrowserHandler.prototype["Debugger.setOverlayMessage"] = function(req) {
+	// NOTE: Unsupported
+	this.sendResponse(req.id);
 }
 
 BrowserHandler.prototype["Debugger.canSetScriptSource"] = function(req) {

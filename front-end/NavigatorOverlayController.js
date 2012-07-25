@@ -48,7 +48,8 @@ WebInspector.NavigatorOverlayController = function(parentSplitView, navigatorVie
     this._navigatorShowHideButton.addEventListener("click", this._toggleNavigator, this);
     this._editorView.element.appendChild(this._navigatorShowHideButton.element);
 
-    WebInspector.settings.navigatorHidden = WebInspector.settings.createSetting("navigatorHidden", true);
+	// Navigator hidden set to false -cat
+    WebInspector.settings.navigatorHidden = WebInspector.settings.createSetting("navigatorHidden", false);
     if (WebInspector.settings.navigatorHidden.get())
         this._toggleNavigator();
 }

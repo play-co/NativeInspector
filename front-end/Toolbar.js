@@ -45,7 +45,7 @@ WebInspector.Toolbar = function()
 
 			if (node.className && node.className.indexOf("toggleable") >= 0) {
 				this.element.removeChild(node);
-				removedNode = true;
+				removedOne = true;
 				break;
 			}
 		}
