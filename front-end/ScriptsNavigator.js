@@ -55,9 +55,6 @@ WebInspector.ScriptsNavigator = function()
     this._tabbedPane.appendTab(WebInspector.ScriptsNavigator.ContentScriptsTab, WebInspector.UIString("Content scripts"), this._contentScriptsView);
     if (WebInspector.experimentsSettings.snippetsSupport.isEnabled())
         this._tabbedPane.appendTab(WebInspector.ScriptsNavigator.SnippetsTab, WebInspector.UIString("Snippets"), this._snippetsView);
-
-	// Open up the scripts navigator by default, and select Content Scripts tab -cat
-	this._tabbedPane.selectTab(WebInspector.ScriptsNavigator.ContentScriptsTab);
 }
 
 WebInspector.ScriptsNavigator.Events = {

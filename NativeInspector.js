@@ -403,6 +403,23 @@ function joinData(container) {
 	return data;
 }
 
+function makeScriptInfo(script) {
+	var scriptName = (script.name === undefined) ? "(unnamed)" : String(script.name);
+	var sharedOffset = scriptName.indexOf("/shared");
+	var isContentScript = (sharedOffset == -1) || (sharedOffset > 2);
+
+	return {
+		scriptId: String(script.id),
+		url: scriptName,
+		startLine: script.lineOffset,
+		startColumn: script.columnOffset,
+		endLine: script.lineCount,
+		endColumn: 0,
+		isContentScript: isContentScript,
+		sourceMapURL: scriptName 
+	};
+}
+
 
 
 //// Browser Session
@@ -628,21 +645,7 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 
 	this.client.getScripts(function(obj) {
 		for (var ii = 0, len = obj.body.length; ii < len; ++ii) {
-			var script = obj.body[ii];
-			var scriptName = (script.name === undefined) ? "(unnamed)" : String(script.name);
-			var sharedOffset = scriptName.indexOf("/shared");
-			var isContentScript = (sharedOffset == -1) || (sharedOffset > 2);
-
-			this.sendEvent("Debugger.scriptParsed", {
-				scriptId: String(script.id),
-				url: scriptName,
-				startLine: script.lineOffset,
-				startColumn: script.columnOffset,
-				endLine: script.lineCount,
-				endColumn: 0,
-				isContentScript: isContentScript,
-				sourceMapURL: scriptName 
-			});
+			this.sendEvent("Debugger.scriptParsed", makeScriptInfo(obj.body[ii]));
 		}
 	}.bind(this));
 
@@ -1570,18 +1573,7 @@ Client.prototype.handleEvent = function(obj) {
 		if (obj.body && obj.body.script) {
 			this.browserServer.addConsoleMessage("info", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
 
-			var script = obj.body.script;
-
-			this.browserServer.broadcastEvent("Debugger.scriptParsed", {
-				scriptId: String(script.id),
-				url: (script.name === undefined) ? "(unnamed)" : String(script.name),
-				startLine: script.lineOffset,
-				startColumn: script.columnOffset,
-				endLine: script.lineCount,
-				endColumn: 0,
-				isContentScript: true,
-				sourceMapURL: script.name
-			});
+			this.browserServer.broadcastEvent("Debugger.scriptParsed", makeScriptInfo(obj.body.script));
 		}
 		break;
 	case "scriptCollected":
