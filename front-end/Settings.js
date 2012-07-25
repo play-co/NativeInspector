@@ -44,14 +44,15 @@ var Preferences = {
     exposeWorkersInspection: false,
     applicationTitle: "Web Inspector - %s",
     showHeapSnapshotObjectsHiddenProperties: false,
-    showDockToRight: false
+    showDockToRight: false,
+    exposeFileSystemInspection: false
 }
 
 var Capabilities = {
     samplingCPUProfiler: false,
     debuggerCausesRecompilation: true,
+    separateScriptCompilationAndExecutionEnabled: false,
     profilerCausesRecompilation: true,
-    nativeInstrumentationEnabled: false,
     heapProfilerPresent: false,
     canOverrideDeviceMetrics: false,
     timelineSupportsFrameInstrumentation: false,
@@ -182,7 +183,10 @@ WebInspector.ExperimentsSettings = function()
     // Add currently running experiments here.
     this.showShadowDOM = this._createExperiment("showShadowDOM", "Show shadow DOM");
     this.snippetsSupport = this._createExperiment("snippetsSupport", "Snippets support");
-    this.sourceCodePanel = this._createExperiment("sourceCodePanel", "Source Code panel");
+    this.nativeMemorySnapshots = this._createExperiment("nativeMemorySnapshots", "Native memory profiling");
+    this.liveNativeMemoryChart = this._createExperiment("liveNativeMemoryChart", "Live native memory chart");
+    this.fileSystemInspection = this._createExperiment("fileSystemInspection", "FileSystem inspection");
+    this.mainThreadMonitoring = this._createExperiment("mainThreadMonitoring", "Show CPU activity in Timeline");
 
     this._cleanUpSetting();
 }

@@ -31,12 +31,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	<link rel="icon" type="image/png" href="fav.png">
 	<title>Native Inspector</title>
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
-    <meta http-equiv="X-UI-Compatible" content="chrome=1">
     <link rel="stylesheet" type="text/css" href="dialog.css">
     <link rel="stylesheet" type="text/css" href="inspector.css">
     <link rel="stylesheet" type="text/css" href="inspectorCommon.css">
     <link rel="stylesheet" type="text/css" href="inspectorSyntaxHighlight.css">
-    <link rel="stylesheet" type="text/css" href="popover.css">
+	<link rel="stylesheet" type="text/css" href="popover.css">
+	<script type="text/javascript" src="jsdifflib.js"></script>
     <script type="text/javascript" src="utilities.js"></script>
     <script type="text/javascript" src="DOMExtension.js"></script>
     <script type="text/javascript" src="treeoutline.js"></script>
@@ -63,6 +63,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     <script type="text/javascript" src="ConsoleModel.js"></script>
     <script type="text/javascript" src="ConsoleMessage.js"></script>
     <script type="text/javascript" src="ConsoleView.js"></script>
+	<script type="text/javascript" src="ExtensionView.js"></script>
+    <script type="text/javascript" src="SplitView.js"></script>
+	<script type="text/javascript" src="FileContentView.js"></script>
+	<script type="text/javascript" src="FileSystemModel.js"></script>
+	<script type="text/javascript" src="FileSystemView.js"></script>
     <script type="text/javascript" src="Panel.js"></script>
     <script type="text/javascript" src="InspectorView.js"></script>
     <script type="text/javascript" src="AdvancedSearchController.js"></script>
@@ -116,17 +121,19 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     <script type="text/javascript" src="CSSCompletions.js"></script>
     <script type="text/javascript" src="CSSKeywordCompletions.js"></script>
     <script type="text/javascript" src="StylesSidebarPane.js"></script>
+    <script type="text/javascript" src="DirectoryContentView.js"></script>
     <script type="text/javascript" src="PanelEnablerView.js"></script>
     <script type="text/javascript" src="StatusBarButton.js"></script>
     <script type="text/javascript" src="ElementsPanel.js"></script>
     <script type="text/javascript" src="NetworkPanel.js"></script>
     <script type="text/javascript" src="InjectedFakeWorker.js"></script>
-    <script type="text/javascript" src="TextViewer.js"></script>
+    <script type="text/javascript" src="TextEditor.js"></script>
     <script type="text/javascript" src="SourceFrame.js"></script>
+    <script type="text/javascript" src="RevisionHistoryView.js"></script>
     <script type="text/javascript" src="ResourceView.js"></script>
     <script type="text/javascript" src="RequestView.js"></script>
     <script type="text/javascript" src="JavaScriptSourceFrame.js"></script>
-    <script type="text/javascript" src="SplitView.js"></script>
+    <script type="text/javascript" src="UISourceCodeFrame.js"></script>
     <script type="text/javascript" src="TabbedEditorContainer.js"></script>
     <script type="text/javascript" src="ScriptsPanel.js"></script>
     <script type="text/javascript" src="ScriptsNavigator.js"></script>
@@ -150,6 +157,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     <script type="text/javascript" src="RequestTimingView.js"></script>
     <script type="text/javascript" src="RequestJSONView.js"></script>
     <script type="text/javascript" src="RequestHTMLView.js"></script>
+    <script type="text/javascript" src="NativeMemorySnapshotView.js"></script>
     <script type="text/javascript" src="RequestResponseView.js"></script>
     <script type="text/javascript" src="RequestPreviewView.js"></script>
     <script type="text/javascript" src="ResourceWebSocketFrameView.js"></script>
@@ -182,9 +190,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     <script type="text/javascript" src="SourceMapping.js"></script>
     <script type="text/javascript" src="UISourceCode.js"></script>
     <script type="text/javascript" src="JavaScriptSource.js"></script>
+    <script type="text/javascript" src="Workspace.js"></script>
     <script type="text/javascript" src="Linkifier.js"></script>
     <script type="text/javascript" src="DebuggerScriptMapping.js"></script>
-    <script type="text/javascript" src="DebuggerResourceBinding.js"></script>
     <script type="text/javascript" src="PresentationConsoleMessageHelper.js"></script>
     <script type="text/javascript" src="BreakpointManager.js"></script>
     <script type="text/javascript" src="ContentProviders.js"></script>

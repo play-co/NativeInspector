@@ -58,6 +58,14 @@ WebInspector.Script.prototype = {
     },
 
     /**
+     * @return {WebInspector.ResourceType}
+     */
+    contentType: function()
+    {
+        return WebInspector.resourceTypes.Script;
+    },
+
+    /**
      * @param {function(?string,boolean,string)} callback
      */
     requestContent: function(callback)
@@ -130,6 +138,7 @@ WebInspector.Script.prototype = {
          */
         function didEditScriptSource(error, callFrames, debugData)
         {
+            // FIXME: support debugData.stack_update_needs_step_in flag by calling WebInspector.debugger_model.callStackModified
             if (!error)
                 this._source = newSource;
             callback(error, callFrames);
@@ -151,13 +160,21 @@ WebInspector.Script.prototype = {
     },
 
     /**
-     * @param {DebuggerAgent.Location} rawLocation
+     * @return {boolean}
+     */
+    isAnonymousScript: function()
+    {
+        return !this.sourceURL;
+    },
+
+    /**
+     * @param {number} lineNumber
+     * @param {number=} columnNumber
      * @return {WebInspector.UILocation}
      */
-    rawLocationToUILocation: function(rawLocation)
+    rawLocationToUILocation: function(lineNumber, columnNumber)
     {
-        console.assert(rawLocation.scriptId === this.scriptId);
-        var uiLocation = this._sourceMapping.rawLocationToUILocation(rawLocation);
+        var uiLocation = this._sourceMapping.rawLocationToUILocation(new WebInspector.DebuggerModel.Location(this.scriptId, lineNumber, columnNumber || 0));
         return uiLocation.uiSourceCode.overrideLocation(uiLocation);
     },
 
@@ -172,7 +189,7 @@ WebInspector.Script.prototype = {
     },
 
     /**
-     * @param {DebuggerAgent.Location} rawLocation
+     * @param {WebInspector.DebuggerModel.Location} rawLocation
      * @param {function(WebInspector.UILocation):(boolean|undefined)} updateDelegate
      * @return {WebInspector.Script.Location}
      */
@@ -189,7 +206,7 @@ WebInspector.Script.prototype = {
 /**
  * @constructor
  * @param {WebInspector.Script} script
- * @param {DebuggerAgent.Location} rawLocation
+ * @param {WebInspector.DebuggerModel.Location} rawLocation
  * @param {function(WebInspector.UILocation):(boolean|undefined)} updateDelegate
  */
 WebInspector.Script.Location = function(script, rawLocation, updateDelegate)
@@ -203,7 +220,7 @@ WebInspector.Script.Location = function(script, rawLocation, updateDelegate)
 WebInspector.Script.Location.prototype = {
     update: function()
     {
-        var uiLocation = this._script.rawLocationToUILocation(this._rawLocation);
+        var uiLocation = this._script.rawLocationToUILocation(this._rawLocation.lineNumber, this._rawLocation.columnNumber);
         if (uiLocation) {
             var uiSourceCode = uiLocation.uiSourceCode;
             if (this._uiSourceCodes.indexOf(uiSourceCode) === -1) {

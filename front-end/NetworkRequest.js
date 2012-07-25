@@ -684,6 +684,14 @@ WebInspector.NetworkRequest.prototype = {
     },
 
     /**
+     * @return {WebInspector.ResourceType}
+     */
+    contentType: function()
+    {
+        return this._type;
+    },
+
+    /**
      * @param {function(?string, boolean, string)} callback
      */
     requestContent: function(callback)
@@ -791,22 +799,6 @@ WebInspector.NetworkRequest.prototype = {
             delete this._contentRequested;
         }
         NetworkAgent.getResponseBody(this._requestId, onResourceContent.bind(this));
-    },
-
-    /**
-     * @param {WebInspector.Resource} resource
-     */
-    setResource: function(resource)
-    {
-        this._resource = resource;
-    },
-
-    /**
-     * @return {WebInspector.Resource}
-     */
-    resource: function()
-    {
-        return this._resource;
     },
 
     /**

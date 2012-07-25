@@ -25,10 +25,24 @@
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Contains diff method based on Javascript Diff Algorithm By John Resig
- * http://ejohn.org/files/jsdiff.js (released under the MIT license).
  */
+
+Object.isEmpty = function(obj)
+{
+    for (var i in obj)
+        return false;
+    return true;
+}
+
+Object.values = function(obj)
+{
+    var keys = Object.keys(obj);
+    var result = [];
+
+    for (var i = 0; i < keys.length; ++i)
+        result.push(obj[keys[i]]);
+    return result;
+}
 
 String.prototype.hasSubstring = function(string, caseInsensitive)
 {
@@ -218,6 +232,22 @@ Object.defineProperty(Array.prototype, "upperBound",
     }
 });
 
+Object.defineProperty(Array.prototype, "rotate",
+{
+    /**
+     * @this {Array.<*>}
+     * @param {number} index
+     * @return {Array.<*>}
+     */
+    value: function(index)
+    {
+        var result = [];
+        for (var i = index; i < index + this.length; ++i)
+            result.push(this[i % this.length]);
+        return result;
+    }
+});
+
 Object.defineProperty(Uint32Array.prototype, "sort", {
    value: Array.prototype.sort
 });
@@ -371,51 +401,6 @@ function insertionIndexForObjectInListSortedByFunction(anObject, aList, aFunctio
             index--;
         return index;
     }
-}
-
-Array.diff = function(left, right)
-{
-    var o = left;
-    var n = right;
-
-    var ns = {};
-    var os = {};
-
-    for (var i = 0; i < n.length; i++) {
-        if (ns[n[i]] == null)
-            ns[n[i]] = { rows: [], o: null };
-        ns[n[i]].rows.push(i);
-    }
-
-    for (var i = 0; i < o.length; i++) {
-        if (os[o[i]] == null)
-            os[o[i]] = { rows: [], n: null };
-        os[o[i]].rows.push(i);
-    }
-
-    for (var i in ns) {
-        if (ns[i].rows.length == 1 && typeof(os[i]) != "undefined" && os[i].rows.length == 1) {
-            n[ns[i].rows[0]] = { text: n[ns[i].rows[0]], row: os[i].rows[0] };
-            o[os[i].rows[0]] = { text: o[os[i].rows[0]], row: ns[i].rows[0] };
-        }
-    }
-
-    for (var i = 0; i < n.length - 1; i++) {
-        if (n[i].text != null && n[i + 1].text == null && n[i].row + 1 < o.length && o[n[i].row + 1].text == null && n[i + 1] == o[n[i].row + 1]) {
-            n[i + 1] = { text: n[i + 1], row: n[i].row + 1 };
-            o[n[i].row + 1] = { text: o[n[i].row + 1], row: i + 1 };
-        }
-    }
-
-    for (var i = n.length - 1; i > 0; i--) {
-        if (n[i].text != null && n[i - 1].text == null && n[i].row > 0 && o[n[i].row - 1].text == null &&
-            n[i - 1] == o[n[i].row - 1]) {
-            n[i - 1] = { text: n[i - 1], row: n[i].row - 1 };
-            o[n[i].row - 1] = { text: o[n[i].row - 1], row: i - 1 };
-        }
-    }
-
-    return { left: o, right: n };
 }
 
 Array.convert = function(list)
@@ -671,46 +656,6 @@ function numberToStringWithSpacesPadding(value, symbolsCount)
 /**
  * @constructor
  */
-function TextDiff()
-{
-    this.added = [];
-    this.removed = [];
-    this.changed = [];
-} 
-
-/**
- * @param {string} baseContent
- * @param {string} newContent
- * @return {TextDiff}
- */
-TextDiff.compute = function(baseContent, newContent)
-{
-    var oldLines = baseContent.split(/\r?\n/);
-    var newLines = newContent.split(/\r?\n/);
-
-    var diff = Array.diff(oldLines, newLines);
-
-    var diffData = new TextDiff();
-
-    var offset = 0;
-    var right = diff.right;
-    for (var i = 0; i < right.length; ++i) {
-        if (typeof right[i] === "string") {
-            if (right.length > i + 1 && right[i + 1].row === i + 1 - offset)
-                diffData.changed.push(i);
-            else {
-                diffData.added.push(i);
-                offset++;
-            }
-        } else
-            offset = i - right[i].row;
-    }
-    return diffData;
-}
-
-/**
- * @constructor
- */
 var Map = function()
 {
     this._map = {};
@@ -762,5 +707,61 @@ Map.prototype = {
     clear: function()
     {
         this._map = {};
+    }
+};
+
+
+/**
+ * @constructor
+ */
+function StringPool()
+{
+    this.reset();
+}
+
+StringPool.prototype = {
+    /**
+     * @param {string} string
+     * @return {string}
+     */
+    intern: function(string)
+    {
+        // Do not mess with setting __proto__ to anything but null, just handle it explicitly.
+        if (string === "__proto__")
+            return "__proto__";
+        var result = this._strings[string];
+        if (result === undefined) {
+            this._strings[string] = string;
+            result = string;
+        }
+        return result;
+    },
+
+    reset: function()
+    {
+        this._strings = Object.create(null);
+    },
+
+    /**
+     * @param {Object} obj
+     * @param {number=} depthLimit
+     */
+    internObjectStrings: function(obj, depthLimit)
+    {
+        if (typeof depthLimit !== "number")
+            depthLimit = 100;
+        else if (--depthLimit < 0)
+            throw "recursion depth limit reached in StringPool.deepIntern(), perhaps attempting to traverse cyclical references?";
+
+        for (var field in obj) {
+            switch (typeof obj[field]) {
+            case "string":
+                obj[field] = this.intern(obj[field]);
+                break;
+            case "object":
+                this.internObjectStrings(obj[field], depthLimit);
+                break;
+            }
+        }
     }
 }

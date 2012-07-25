@@ -41,9 +41,16 @@ WebInspector.NetworkItemView = function(request)
     var headersView = new WebInspector.RequestHeadersView(request);
     this.appendTab("headers", WebInspector.UIString("Headers"), headersView);
 
+    this.addEventListener(WebInspector.TabbedPane.EventTypes.TabSelected, this._tabSelected, this);
+
+    if (request.frames().length > 0) {
+        var frameView = new WebInspector.ResourceWebSocketFrameView(request);
+        this.appendTab("webSocketFrames", WebInspector.UIString("Frames"), frameView);
+        return;
+    }
+
     var responseView = new WebInspector.RequestResponseView(request);
     var previewView = new WebInspector.RequestPreviewView(request, responseView);
-
     this.appendTab("preview", WebInspector.UIString("Preview"), previewView);
     this.appendTab("response", WebInspector.UIString("Response"), responseView);
 
@@ -56,13 +63,7 @@ WebInspector.NetworkItemView = function(request)
         var timingView = new WebInspector.RequestTimingView(request);
         this.appendTab("timing", WebInspector.UIString("Timing"), timingView);
     }
-
-    if (request.frames().length > 0) {
-        var frameView = new WebInspector.ResourceWebSocketFrameView(request);
-        this.appendTab("webSocketFrames", WebInspector.UIString("WebSocket Frames"), frameView);
-    }
-
-    this.addEventListener(WebInspector.TabbedPane.EventTypes.TabSelected, this._tabSelected, this);
+    this._request = request;
 }
 
 WebInspector.NetworkItemView.prototype = {
@@ -91,6 +92,14 @@ WebInspector.NetworkItemView.prototype = {
     {
         if (event.data.isUserGesture)
             WebInspector.settings.resourceViewTab.set(event.data.tabId);
+    },
+
+    /**
+      * @return {WebInspector.NetworkRequest}
+      */
+    request: function()
+    {
+        return this._request;
     }
 }
 

@@ -37,9 +37,9 @@
     <file>DatabaseTableView.js</file>
     <file>DataGrid.js</file>
     <file>DebuggerModel.js</file>
-    <file>DebuggerResourceBinding.js</file>
     <file>DebuggerScriptMapping.js</file>
     <file>Dialog.js</file>
+    <file>DirectoryContentView.js</file>
     <file>DOMAgent.js</file>
     <file>DOMBreakpointsSidebarPane.js</file>
     <file>DOMExtension.js</file>
@@ -57,7 +57,11 @@
     <file>ExtensionPanel.js</file>
     <file>ExtensionRegistryStub.js</file>
     <file>ExtensionServer.js</file>
+    <file>ExtensionView.js</file>
+    <file>FileContentView.js</file>
     <file>FileManager.js</file>
+    <file>FileSystemModel.js</file>
+    <file>FileSystemView.js</file>
     <file>FilteredItemSelectionDialog.js</file>
     <file>FontView.js</file>
     <file>GoToLineDialog.js</file>
@@ -75,7 +79,6 @@
     <file>ImageView.js</file>
     <file>IndexedDBModel.js</file>
     <file>IndexedDBViews.js</file>
-    <file>InjectedFakeWorker.js</file>
     <file>inspector.js</file>
     <file>InspectorBackend.js</file>
     <file>InspectorFrontendAPI.js</file>
@@ -85,10 +88,12 @@
     <file>JavaScriptFormatter.js</file>
     <file>JavaScriptSource.js</file>
     <file>JavaScriptSourceFrame.js</file>
+    <file>jsdifflib.js</file>
     <file>KeyboardShortcut.js</file>
     <file>Linkifier.js</file>
     <file>MemoryStatistics.js</file>
     <file>MetricsSidebarPane.js</file>
+    <file>NativeMemorySnapshotView.js</file>
     <file>NavigatorOverlayController.js</file>
     <file>NavigatorView.js</file>
     <file>NetworkItemView.js</file>
@@ -127,6 +132,7 @@
     <file>ResourceView.js</file>
     <file>ResourceWebSocketFrameView.js</file>
     <file>ResourcesPanel.js</file>
+    <file>RevisionHistoryView.js</file>
     <file>ScopeChainSidebarPane.js</file>
     <file>Script.js</file>
     <file>ScriptFormatter.js</file>
@@ -160,10 +166,10 @@
     <file>TabbedEditorContainer.js</file>
     <file>TabbedPane.js</file>
     <file>TestController.js</file>
+    <file>TextEditor.js</file>
     <file>TextEditorHighlighter.js</file>
     <file>TextEditorModel.js</file>
     <file>TextPrompt.js</file>
-    <file>TextViewer.js</file>
     <file>TimelineFrameController.js</file>
     <file>TimelineManager.js</file>
     <file>TimelineModel.js</file>
@@ -175,6 +181,7 @@
     <file>TopDownProfileDataGridTree.js</file>
     <file>treeoutline.js</file>
     <file>UISourceCode.js</file>
+    <file>UISourceCodeFrame.js</file>
     <file>UIUtils.js</file>
     <file>UserAgentSupport.js</file>
     <file>UserMetrics.js</file>
@@ -183,6 +190,7 @@
     <file>WatchExpressionsSidebarPane.js</file>
     <file>WorkerManager.js</file>
     <file>WorkersSidebarPane.js</file>
+    <file>Workspace.js</file>
     <file>UglifyJS/parse-js.js</file>
     <file>auditsPanel.css</file>
     <file>dataGrid.css</file>
@@ -195,6 +203,7 @@
     <file>inspector.css</file>
     <file>inspectorCommon.css</file>
     <file>inspectorSyntaxHighlight.css</file>
+    <file>nativeMemoryProfiler.css</file>
     <file>navigatorView.css</file>
     <file>networkLogView.css</file>
     <file>networkPanel.css</file>
@@ -203,11 +212,12 @@
     <file>profilesPanel.css</file>
     <file>resourceView.css</file>
     <file>resourcesPanel.css</file>
+    <file>revisionHistory.css</file>
     <file>scriptsPanel.css</file>
     <file>splitView.css</file>
     <file>tabbedPane.css</file>
+    <file>textEditor.css</file>
     <file>textPrompt.css</file>
-    <file>textViewer.css</file>
     <file>timelinePanel.css</file>
     <file>Images/applicationCache.png</file>
     <file>Images/back.png</file>
@@ -239,6 +249,7 @@
     <file>Images/errorIcon.png</file>
     <file>Images/errorMediumIcon.png</file>
     <file>Images/errorRedDot.png</file>
+    <file>Images/fileSystem.png</file>
     <file>Images/forward.png</file>
     <file>Images/frame.png</file>
     <file>Images/glossyHeader.png</file>
@@ -298,12 +309,7 @@
     <file>Images/spinnerInactiveSelected.gif</file>
     <file>Images/splitviewDimple.png</file>
     <file>Images/splitviewDividerBackground.png</file>
-    <file>Images/statusbarBackground.png</file>
-    <file>Images/statusbarBottomBackground.png</file>
-    <file>Images/statusbarButtons.png</file>
     <file>Images/statusbarButtonGlyphs.png</file>
-    <file>Images/statusbarMenuButton.png</file>
-    <file>Images/statusbarMenuButtonSelected.png</file>
     <file>Images/statusbarResizerHorizontal.png</file>
     <file>Images/statusbarResizerVertical.png</file>
     <file>Images/successGreenDot.png</file>
@@ -313,15 +319,7 @@
     <file>Images/thumbVert.png</file>
     <file>Images/thumbHoverHoriz.png</file>
     <file>Images/thumbHoverVert.png</file>
-    <file>Images/timelineBarBlue.png</file>
-    <file>Images/timelineBarGray.png</file>
-    <file>Images/timelineBarGreen.png</file>
-    <file>Images/timelineBarOrange.png</file>
-    <file>Images/timelineBarPurple.png</file>
-    <file>Images/timelineBarRed.png</file>
-    <file>Images/timelineBarYellow.png</file>
-    <file>Images/timelineCheckmarks.png</file>
-    <file>Images/timelineDots.png</file>
+    <file>Images/tickMark.png</file>
     <file>Images/timelineHollowPillBlue.png</file>
     <file>Images/timelineHollowPillGray.png</file>
     <file>Images/timelineHollowPillGreen.png</file>

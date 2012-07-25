@@ -101,7 +101,7 @@ WebInspector.CPUProfileView = function(profile)
 	// Removed link max length -cat
     this._linkifier = new WebInspector.Linkifier(new WebInspector.Linkifier.DefaultFormatter());
 
-    ProfilerAgent.getProfile(this.profile.typeId, this.profile.uid, profileCallback.bind(this));
+    ProfilerAgent.getProfile(this.profile.profileType().id, this.profile.uid, profileCallback.bind(this));
 }
 
 WebInspector.CPUProfileView._TypeTree = "Tree";
@@ -111,16 +111,6 @@ WebInspector.CPUProfileView.prototype = {
     get statusBarItems()
     {
         return [this.viewSelectElement, this.percentButton.element, this.focusButton.element, this.excludeButton.element, this.resetButton.element];
-    },
-
-    get profile()
-    {
-        return this._profile;
-    },
-
-    set profile(profile)
-    {
-        this._profile = profile;
     },
 
     get bottomUpProfileDataGridTree()
@@ -175,7 +165,6 @@ WebInspector.CPUProfileView.prototype = {
 
     refreshVisibleData: function()
     {
-		// Changed to use rootNode() here -cat
         var child = this.dataGrid.rootNode().children[0];
         while (child) {
             child.refresh();
@@ -614,16 +603,6 @@ WebInspector.CPUProfileType.prototype = {
         this._recording = isProfiling;
     },
 
-    createSidebarTreeElementForProfile: function(profile)
-    {
-        return new WebInspector.ProfileSidebarTreeElement(profile, WebInspector.UIString("Profile %d"), "profile-sidebar-tree-item");
-    },
-
-    createView: function(profile)
-    {
-        return new WebInspector.CPUProfileView(profile);
-    },
-
     /**
      * @override
      * @param {string=} title
@@ -632,7 +611,7 @@ WebInspector.CPUProfileType.prototype = {
     createTemporaryProfile: function(title)
     {
         title = title || WebInspector.UIString("Recording\u2026");
-        return new WebInspector.ProfileHeader(WebInspector.CPUProfileType.TypeId, title);
+        return new WebInspector.CPUProfileHeader(this, title);
     },
 
     /**
@@ -642,8 +621,40 @@ WebInspector.CPUProfileType.prototype = {
      */
     createProfile: function(profile)
     {
-        return new WebInspector.ProfileHeader(profile.typeId, profile.title, profile.uid);
+        return new WebInspector.CPUProfileHeader(this, profile.title, profile.uid);
     }
 }
 
 WebInspector.CPUProfileType.prototype.__proto__ = WebInspector.ProfileType.prototype;
+
+/**
+ * @constructor
+ * @extends {WebInspector.ProfileHeader}
+ * @param {WebInspector.CPUProfileType} type
+ * @param {string} title
+ * @param {number=} uid
+ */
+WebInspector.CPUProfileHeader = function(type, title, uid)
+{
+    WebInspector.ProfileHeader.call(this, type, title, uid);
+}
+
+WebInspector.CPUProfileHeader.prototype = {
+    /**
+     * @override
+     */
+    createSidebarTreeElement: function()
+    {
+        return new WebInspector.ProfileSidebarTreeElement(this, WebInspector.UIString("Profile %d"), "profile-sidebar-tree-item");
+    },
+
+    /**
+     * @override
+     */
+    createView: function()
+    {
+        return new WebInspector.CPUProfileView(this);
+    }
+}
+
+WebInspector.CPUProfileHeader.prototype.__proto__ = WebInspector.ProfileHeader.prototype;

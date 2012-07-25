@@ -129,11 +129,13 @@ WebInspector.panels = {};
 WebInspector.inspectorView;
 
 /**
+ * @param {Element} element
  * @param {WebInspector.View} view
+ * @param {function()=} onclose
  */
-WebInspector.showViewInDrawer = function(view) {}
+WebInspector.showViewInDrawer = function(element, view, onclose) {}
 
-WebInspector.closeDrawerView = function() {}
+WebInspector.closeViewInDrawer = function() {}
 
 /**
  * @param {string=} messageLevel
@@ -145,18 +147,13 @@ WebInspector.addMainEventListeners = function(doc) {}
 
 WebInspector.openResource = function(url, external) {}
 
-/** @param {WebInspector.NetworkRequest} request */
-WebInspector.openRequestInNetworkPanel = function(request) {}
-
-WebInspector.populateResourceContextMenu = function(contextMenu, url, preferredLineNumber) {}
+WebInspector.showConsole = function() {}
 
 /**
  * @param {string} expression
  * @param {boolean=} showResultOnly
  */
 WebInspector.evaluateInConsole = function(expression, showResultOnly) {}
-
-var InjectedFakeWorker = function() {}
 
 WebInspector.queryParamsObject = {}
 
@@ -232,3 +229,10 @@ WebInspector.SourceJavaScriptTokenizer = {}
 WebInspector.SourceJavaScriptTokenizer.Keywords = {}
 
 var InspectorTest = {}
+
+/* jsdifflib API */
+var difflib = {};
+difflib.stringAsLines = function(text) { return []; }
+/** @constructor */
+difflib.SequenceMatcher = function(baseText, newText) { }
+difflib.SequenceMatcher.prototype.get_opcodes = function() { return []; }

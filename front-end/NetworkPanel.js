@@ -137,11 +137,8 @@ WebInspector.NetworkLogView.prototype = {
 
     _createTable: function()
     {
-        var columns;
-        if (Capabilities.nativeInstrumentationEnabled)
-            columns = {name: {}, method: {}, status: {}, type: {}, initiator: {}, size: {}, time: {}, timeline: {}};
-        else
-            columns = {name: {}, method: {}, status: {}, type: {}, size: {}, time: {}, timeline: {}};
+        var columns = {name: {}, method: {}, status: {}, type: {}, initiator: {}, size: {}, time: {}, timeline: {}};
+
         columns.name.titleDOMFragment = this._makeHeaderFragment(WebInspector.UIString("Name"), WebInspector.UIString("Path"));
         columns.name.sortable = true;
         columns.name.width = "20%";
@@ -159,11 +156,9 @@ WebInspector.NetworkLogView.prototype = {
         columns.type.sortable = true;
         columns.type.width = "6%";
 
-        if (Capabilities.nativeInstrumentationEnabled) {
-            columns.initiator.title = WebInspector.UIString("Initiator");
-            columns.initiator.sortable = true;
-            columns.initiator.width = "10%";
-        }
+        columns.initiator.title = WebInspector.UIString("Initiator");
+        columns.initiator.sortable = true;
+        columns.initiator.width = "10%";
 
         columns.size.titleDOMFragment = this._makeHeaderFragment(WebInspector.UIString("Size"), WebInspector.UIString("Content"));
         columns.size.sortable = true;
@@ -177,10 +172,7 @@ WebInspector.NetworkLogView.prototype = {
 
         columns.timeline.title = "";
         columns.timeline.sortable = false;
-        if (Capabilities.nativeInstrumentationEnabled)
-            columns.timeline.width = "40%";
-        else
-            columns.timeline.width = "50%";
+        columns.timeline.width = "40%";
         columns.timeline.sort = "ascending";
 
         this._dataGrid = new WebInspector.DataGrid(columns);
@@ -295,7 +287,7 @@ WebInspector.NetworkLogView.prototype = {
         this._timelineSortSelector.selectedIndex = 0;
         this._updateOffscreenRows();
 
-        this.performSearch(null, true);
+        this.performSearch(null);
     },
 
     _sortByTimeline: function()
@@ -322,7 +314,6 @@ WebInspector.NetworkLogView.prototype = {
     {
         var filterBarElement = document.createElement("div");
         filterBarElement.className = "scope-bar status-bar-item";
-        filterBarElement.id = "network-filter";
 
         /**
          * @param {string} typeName
@@ -442,7 +433,7 @@ WebInspector.NetworkLogView.prototype = {
             selectMultiple = true;
 
         this._filter(e.target, selectMultiple);
-        this.performSearch(null, true);
+        this.performSearch(null);
         this._updateSummaryBar();
     },
 
@@ -842,8 +833,7 @@ WebInspector.NetworkLogView.prototype = {
         this._dataGrid.showColumn("method");
         this._dataGrid.showColumn("status");
         this._dataGrid.showColumn("type");
-        if (Capabilities.nativeInstrumentationEnabled)
-            this._dataGrid.showColumn("initiator");
+        this._dataGrid.showColumn("initiator");
         this._dataGrid.showColumn("size");
         this._dataGrid.showColumn("time");
         this._dataGrid.showColumn("timeline");
@@ -853,14 +843,10 @@ WebInspector.NetworkLogView.prototype = {
         widths.method = 6;
         widths.status = 6;
         widths.type = 6;
-        if (Capabilities.nativeInstrumentationEnabled)
-            widths.initiator = 10;
+        widths.initiator = 10;
         widths.size = 6;
         widths.time = 6;
-        if (Capabilities.nativeInstrumentationEnabled)
-            widths.timeline = 40;
-        else
-            widths.timeline = 50;
+        widths.timeline = 40;
 
         this._dataGrid.applyColumnWidthsMap(widths);
     },
@@ -873,8 +859,7 @@ WebInspector.NetworkLogView.prototype = {
         this._dataGrid.hideColumn("method");
         this._dataGrid.hideColumn("status");
         this._dataGrid.hideColumn("type");
-        if (Capabilities.nativeInstrumentationEnabled)
-            this._dataGrid.hideColumn("initiator");
+        this._dataGrid.hideColumn("initiator");
         this._dataGrid.hideColumn("size");
         this._dataGrid.hideColumn("time");
         this._dataGrid.hideColumn("timeline");
@@ -1135,20 +1120,19 @@ WebInspector.NetworkLogView.prototype = {
             this._highlightedSubstringChanges = node._highlightMatchedSubstring(this._searchRegExp);
             if (reveal)
                 node.reveal();
-            this._currentMatcRequestrceIndex = matchedRequestIndex;
+            this._currentMatchedRequestIndex = matchedRequestIndex;
         }
         this.dispatchEventToListeners(WebInspector.NetworkLogView.EventTypes.SearchIndexUpdated, this._currentMatchedRequestIndex);
     },
 
-    performSearch: function(searchQuery, sortOrFilterApplied)
+    performSearch: function(searchQuery)
     {
         var newMatchedRequestIndex = 0;
         var currentMatchedRequestId;
         if (this._currentMatchedRequestIndex !== -1)
             currentMatchedRequestId = this._matchedRequests[this._currentMatchedRequestIndex];
 
-        if (!sortOrFilterApplied)
-            this._searchRegExp = createPlainTextSearchRegex(searchQuery, "i");
+        this._searchRegExp = createPlainTextSearchRegex(searchQuery, "i");
 
         this._clearSearchMatchedList();
 
@@ -1165,7 +1149,7 @@ WebInspector.NetworkLogView.prototype = {
         }
 
         this.dispatchEventToListeners(WebInspector.NetworkLogView.EventTypes.SearchCountUpdated, this._matchedRequests.length);
-        this._highlightNthMatchedRequest(newMatchedRequestIndex, !sortOrFilterApplied);
+        this._highlightNthMatchedRequest(newMatchedRequestIndex, false);
     },
 
     jumpToPreviousSearchResult: function()
@@ -1228,6 +1212,7 @@ WebInspector.NetworkLogView.EventTypes = {
 /**
  * @constructor
  * @extends {WebInspector.Panel}
+ * @implements {WebInspector.ContextMenu.Provider}
  */
 WebInspector.NetworkPanel = function()
 {
@@ -1262,6 +1247,7 @@ WebInspector.NetworkPanel = function()
         return this.visibleView;
     }
     WebInspector.GoToLineDialog.install(this, viewGetter.bind(this));
+    WebInspector.ContextMenu.registerProvider(this);
 }
 
 WebInspector.NetworkPanel.prototype = {
@@ -1419,9 +1405,9 @@ WebInspector.NetworkPanel.prototype = {
         this._networkLogView.switchToBriefView();
     },
 
-    performSearch: function(searchQuery, sortOrFilterApplied)
+    performSearch: function(searchQuery)
     {
-        this._networkLogView.performSearch(searchQuery, sortOrFilterApplied);
+        this._networkLogView.performSearch(searchQuery);
     },
 
     jumpToPreviousSearchResult: function()
@@ -1437,6 +1423,25 @@ WebInspector.NetworkPanel.prototype = {
     searchCanceled: function()
     {
         this._networkLogView.searchCanceled();
+    },
+
+    /** 
+     * @param {WebInspector.ContextMenu} contextMenu
+     * @param {Object} target
+     */
+    appendApplicableItems: function(contextMenu, target)
+    {
+        if (!(target instanceof WebInspector.NetworkRequest))
+            return;
+        if (this.visibleView && this.visibleView.isShowing() && this.visibleView.request() === target)
+            return;
+
+        function reveal()
+        {
+            WebInspector.inspectorView.setCurrentPanel(this);
+            this.revealAndHighlightRequest(/** @type {WebInspector.NetworkRequest} */ target);
+        }
+        contextMenu.appendItem(WebInspector.UIString(WebInspector.useLowerCaseMenuTitles() ? "Reveal in network panel" : "Reveal in Network Panel"), reveal.bind(this));
     }
 }
 
@@ -1707,8 +1712,7 @@ WebInspector.NetworkDataGridNode.prototype = {
         this._methodCell = this._createDivInTD("method");
         this._statusCell = this._createDivInTD("status");
         this._typeCell = this._createDivInTD("type");
-        if (Capabilities.nativeInstrumentationEnabled)
-            this._initiatorCell = this._createDivInTD("initiator");
+        this._initiatorCell = this._createDivInTD("initiator");
         this._sizeCell = this._createDivInTD("size");
         this._timeCell = this._createDivInTD("time");
         this._createTimelineCell();
@@ -1801,8 +1805,7 @@ WebInspector.NetworkDataGridNode.prototype = {
 
         this._refreshStatusCell();
         this._refreshTypeCell();
-        if (Capabilities.nativeInstrumentationEnabled)
-            this._refreshInitiatorCell();
+        this._refreshInitiatorCell();
         this._refreshSizeCell();
         this._refreshTimeCell();
 

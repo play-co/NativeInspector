@@ -43,7 +43,6 @@ WebInspector.JavaScriptBreakpointsSidebarPane = function(breakpointManager, show
     this.emptyElement.textContent = WebInspector.UIString("No Breakpoints");
 
     this.bodyElement.appendChild(this.emptyElement);
-    this.bodyElement.addEventListener("contextmenu", this._contextMenu.bind(this), false);
 
     this._items = new Map();
     this._breakpointManager.addEventListener(WebInspector.BreakpointManager.Events.BreakpointAdded, this._breakpointAdded, this);
@@ -169,16 +168,34 @@ WebInspector.JavaScriptBreakpointsSidebarPane.prototype = {
     {
         var contextMenu = new WebInspector.ContextMenu();
         contextMenu.appendItem(WebInspector.UIString("Remove Breakpoint"), breakpoint.remove.bind(breakpoint));
-        var removeAllTitle = WebInspector.UIString(WebInspector.useLowerCaseMenuTitles() ? "Remove all JavaScript breakpoints" : "Remove All JavaScript Breakpoints");
+        var removeAllTitle = WebInspector.UIString(WebInspector.useLowerCaseMenuTitles() ? "Remove all breakpoints" : "Remove All Breakpoints");
         contextMenu.appendItem(removeAllTitle, this._breakpointManager.removeAllBreakpoints.bind(this._breakpointManager));
-        contextMenu.show(event);
-    },
+        
+        var breakpointActive = WebInspector.debuggerModel.breakpointsActive();
+        var breakpointActiveTitle = WebInspector.UIString(breakpointActive ? "Deactivate All Breakpoints" : "Activate All Breakpoints");
+        contextMenu.appendItem(breakpointActiveTitle, WebInspector.debuggerModel.setBreakpointsActive.bind(WebInspector.debuggerModel, !breakpointActive));
 
-    _contextMenu: function(event)
-    {
-        var contextMenu = new WebInspector.ContextMenu();
-        var removeAllTitle = WebInspector.UIString(WebInspector.useLowerCaseMenuTitles() ? "Remove all JavaScript breakpoints" : "Remove All JavaScript Breakpoints");
-        contextMenu.appendItem(removeAllTitle, this._breakpointManager.removeAllBreakpoints.bind(this._breakpointManager));
+        function enabledBreakpointCount(breakpoints)
+        {
+            var count = 0;
+            for (var i = 0; i < breakpoints.length; ++i) {
+                if (breakpoints[i].checkbox.checked)
+                    count++;
+            }
+            return count;
+        }
+        var breakpoints = this._items.values();
+        if (breakpoints.length > 1) {
+            var enableBreakpointCount = enabledBreakpointCount(breakpoints);
+            var enableTitle = WebInspector.UIString(WebInspector.useLowerCaseMenuTitles() ? "Enable all breakpoints" : "Enable All Breakpoints");
+            var disableTitle = WebInspector.UIString(WebInspector.useLowerCaseMenuTitles() ? "Disable all breakpoints" : "Disable All Breakpoints");
+
+            contextMenu.appendSeparator();
+
+            contextMenu.appendItem(enableTitle, this._breakpointManager.toggleAllBreakpoints.bind(this._breakpointManager, true), !(enableBreakpointCount != breakpoints.length));
+            contextMenu.appendItem(disableTitle, this._breakpointManager.toggleAllBreakpoints.bind(this._breakpointManager, false), !(enableBreakpointCount > 1));
+        }
+
         contextMenu.show(event);
     },
 

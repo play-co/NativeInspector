@@ -30,8 +30,10 @@
 /**
  * @constructor
  * @extends {WebInspector.SidebarPane}
+ * @param {WebInspector.ComputedStyleSidebarPane} computedStylePane
+ * @param {function(DOMAgent.NodeId, string, boolean)} setPseudoClassCallback
  */
-WebInspector.StylesSidebarPane = function(computedStylePane)
+WebInspector.StylesSidebarPane = function(computedStylePane, setPseudoClassCallback)
 {
     WebInspector.SidebarPane.call(this, WebInspector.UIString("Styles"));
 
@@ -82,6 +84,7 @@ WebInspector.StylesSidebarPane = function(computedStylePane)
 
     this._computedStylePane = computedStylePane;
     computedStylePane._stylesSidebarPane = this;
+    this._setPseudoClassCallback = setPseudoClassCallback;
     this.element.addEventListener("contextmenu", this._contextMenuEventFired.bind(this), true);
     WebInspector.settings.colorFormat.addChangeListener(this._colorFormatSettingChanged.bind(this));
 
@@ -111,9 +114,6 @@ WebInspector.StylesSidebarPane.ColorFormat = {
     HSLA: "hsla"
 }
 
-WebInspector.StylesSidebarPane.StyleValueDelimiters = " \xA0\t\n\"':;,/()";
-
-
 // Keep in sync with RenderStyleConstants.h PseudoId enum. Array below contains pseudo id names for corresponding enum indexes.
 // First item is empty due to its artificial NOPSEUDO nature in the enum.
 // FIXME: find a way of generating this mapping or getting it from combination of RenderStyleConstants and CSSSelector.cpp at
@@ -131,65 +131,6 @@ WebInspector.StylesSidebarPane.PseudoIdNames = [
     "-webkit-scrollbar-button", "-webkit-scrollbar-track", "-webkit-scrollbar-track-piece", "-webkit-scrollbar-corner",
     "-webkit-resizer", "-webkit-inner-spin-button", "-webkit-outer-spin-button"
 ];
-
-WebInspector.StylesSidebarPane.CSSNumberRegex = /^(-?(?:\d+(?:\.\d+)?|\.\d+))$/;
-
-WebInspector.StylesSidebarPane.alteredFloatNumber = function(number, event)
-{
-    var arrowKeyPressed = (event.keyIdentifier === "Up" || event.keyIdentifier === "Down");
-
-    // Jump by 10 when shift is down or jump by 0.1 when Alt/Option is down.
-    // Also jump by 10 for page up and down, or by 100 if shift is held with a page key.
-    var changeAmount = 1;
-    if (event.shiftKey && !arrowKeyPressed)
-        changeAmount = 100;
-    else if (event.shiftKey || !arrowKeyPressed)
-        changeAmount = 10;
-    else if (event.altKey)
-        changeAmount = 0.1;
-
-    if (event.keyIdentifier === "Down" || event.keyIdentifier === "PageDown")
-        changeAmount *= -1;
-
-    // Make the new number and constrain it to a precision of 6, this matches numbers the engine returns.
-    // Use the Number constructor to forget the fixed precision, so 1.100000 will print as 1.1.
-    var result = Number((number + changeAmount).toFixed(6));
-    if (!String(result).match(WebInspector.StylesSidebarPane.CSSNumberRegex))
-        return null;
-
-    return result;
-}
-
-WebInspector.StylesSidebarPane.alteredHexNumber = function(hexString, event)
-{
-    var number = parseInt(hexString, 16);
-    if (isNaN(number) || !isFinite(number))
-        return hexString;
-
-    var maxValue = Math.pow(16, hexString.length) - 1;
-    var arrowKeyPressed = (event.keyIdentifier === "Up" || event.keyIdentifier === "Down");
-
-    var delta;
-    if (arrowKeyPressed)
-        delta = (event.keyIdentifier === "Up") ? 1 : -1;
-    else
-        delta = (event.keyIdentifier === "PageUp") ? 16 : -16;
-
-    if (event.shiftKey)
-        delta *= 16;
-
-    var result = number + delta;
-    if (result < 0)
-        result = 0; // Color hex values are never negative, so clamp to 0.
-    else if (result > maxValue)
-        return hexString;
-
-    // Ensure the result length is the same as the original hex value.
-    var resultString = result.toString(16).toUpperCase();
-    for (var i = 0, lengthDelta = hexString.length - resultString.length; i < lengthDelta; ++i)
-        resultString = "0" + resultString;
-    return resultString;
-}
 
 WebInspector.StylesSidebarPane.canonicalPropertyName = function(name)
 {
@@ -211,7 +152,21 @@ WebInspector.StylesSidebarPane.prototype = {
 
     get forcedPseudoClasses()
     {
-        return this._forcedPseudoClasses;
+        return this.node ? (this.node.getUserProperty("pseudoState") || undefined) : undefined;
+    },
+
+    _updateForcedPseudoStateInputs: function()
+    {
+        if (!this.node)
+            return;
+
+        var nodePseudoState = this.forcedPseudoClasses;
+        if (!nodePseudoState)
+            nodePseudoState = [];
+
+        var inputs = this._elementStatePane.inputs;
+        for (var i = 0; i < inputs.length; ++i)
+            inputs[i].checked = nodePseudoState.indexOf(inputs[i].state) >= 0;
     },
 
     update: function(node, forceUpdate)
@@ -237,6 +192,8 @@ WebInspector.StylesSidebarPane.prototype = {
             this.node = node;
         else
             node = this.node;
+
+        this._updateForcedPseudoStateInputs();
 
         if (refresh)
             this._refreshUpdate();
@@ -279,7 +236,7 @@ WebInspector.StylesSidebarPane.prototype = {
 
         if (this._computedStylePane.expanded || forceFetchComputedStyle) {
             this._refreshUpdateInProgress = true;
-            WebInspector.cssModel.getComputedStyleAsync(node.id, this._forcedPseudoClasses, computedStyleCallback.bind(this));
+            WebInspector.cssModel.getComputedStyleAsync(node.id, this.forcedPseudoClasses, computedStyleCallback.bind(this));
         } else {
             this._innerRefreshUpdate(node, null, editedSection);
             if (userCallback)
@@ -337,11 +294,14 @@ WebInspector.StylesSidebarPane.prototype = {
         }
 
         if (this._computedStylePane.expanded)
-            WebInspector.cssModel.getComputedStyleAsync(node.id, this._forcedPseudoClasses, computedCallback.bind(this));
+            WebInspector.cssModel.getComputedStyleAsync(node.id, this.forcedPseudoClasses, computedCallback.bind(this));
         WebInspector.cssModel.getInlineStylesAsync(node.id, inlineCallback.bind(this));
-        WebInspector.cssModel.getMatchedStylesAsync(node.id, this._forcedPseudoClasses, true, true, stylesCallback.bind(this));
+        WebInspector.cssModel.getMatchedStylesAsync(node.id, this.forcedPseudoClasses, true, true, stylesCallback.bind(this));
     },
 
+    /**
+     * @param {function()=} userCallback
+     */
     _validateNode: function(userCallback)
     {
         if (!this.node) {
@@ -813,13 +773,6 @@ WebInspector.StylesSidebarPane.prototype = {
         } else {
             this._elementStateButton.removeStyleClass("toggled");
             this._elementStatePane.removeStyleClass("expanded");
-            // Clear flags on hide.
-            if (this._forcedPseudoClasses) {
-                for (var i = 0; i < this._elementStatePane.inputs.length; ++i)
-                    this._elementStatePane.inputs[i].checked = false;
-                delete this._forcedPseudoClasses;
-                this._rebuildUpdate();
-            }
         }
     },
 
@@ -834,13 +787,10 @@ WebInspector.StylesSidebarPane.prototype = {
 
         function clickListener(event)
         {
-            var pseudoClasses = [];
-            for (var i = 0; i < inputs.length; ++i) {
-                if (inputs[i].checked)
-                    pseudoClasses.push(inputs[i].state);
-            }
-            this._forcedPseudoClasses = pseudoClasses.length ? pseudoClasses : undefined;
-            this._rebuildUpdate();
+            var node = this._validateNode();
+            if (!node)
+                return;
+            this._setPseudoClassCallback(node.id, event.target.state, event.target.checked);
         }
 
         function createCheckbox(state)
@@ -1140,16 +1090,16 @@ WebInspector.StylePropertiesSection.prototype = {
         // Create property tree elements.
         for (var i = 0; i < this.uniqueProperties.length; ++i) {
             var property = this.uniqueProperties[i];
-            var disabled = property.disabled;
-            var shorthand = !disabled ? property.shorthand : null;
-
-            if (shorthand && shorthand in handledProperties)
-                continue;
+            var shorthand = !property.disabled && !property.inactive ? property.shorthand : null;
 
             if (shorthand) {
-                property = style.getLiveProperty(shorthand);
-                if (!property)
+                if (shorthand in handledProperties)
+                    continue;
+                // We should only create synthetic shorthands if they are not present in the style source (i.e. we are dealing with a source-less style).
+                if (!style.getLiveProperty(shorthand))
                     property = new WebInspector.CSSProperty(style, style.allProperties.length, shorthand, style.getShorthandValue(shorthand), style.getShorthandPriority(shorthand), "style", true, true, "", undefined);
+                else
+                    shorthand = null;
             }
 
             // BUG71275: Never show purely style-based properties in editable rules.
@@ -1157,6 +1107,8 @@ WebInspector.StylePropertiesSection.prototype = {
                 continue;
 
             var isShorthand = !!(property.isLive && (shorthand || shorthandNames[property.name]));
+            if (isShorthand && (property.name in handledProperties))
+                continue;
             var inherited = this.isPropertyInherited(property.name);
             var overloaded = this.isPropertyOverloaded(property.name, isShorthand);
 
@@ -1186,7 +1138,7 @@ WebInspector.StylePropertiesSection.prototype = {
 
     _handleSelectorContainerClick: function(event)
     {
-        if (this._checkWillCancelEditing())
+        if (this._checkWillCancelEditing() || !this.editable)
             return;
         if (event.target === this._selectorContainer)
             this.addNewBlankProperty(0).startEditing();
@@ -1222,17 +1174,30 @@ WebInspector.StylePropertiesSection.prototype = {
 
         if (this.styleRule.sourceURL)
             return linkifyUncopyable(this.styleRule.sourceURL, this.rule.sourceLine);
+
         if (!this.rule)
             return document.createTextNode("");
 
         var origin = "";
         if (this.rule.isUserAgent)
-            origin = WebInspector.UIString("user agent stylesheet");
-        else if (this.rule.isUser)
-            origin = WebInspector.UIString("user stylesheet");
-        else if (this.rule.isViaInspector)
-            origin = WebInspector.UIString("via inspector");
-        return document.createTextNode(origin);
+            return document.createTextNode(WebInspector.UIString("user agent stylesheet"));
+        if (this.rule.isUser)
+            return document.createTextNode(WebInspector.UIString("user stylesheet"));
+        if (this.rule.isViaInspector) {
+            var element = document.createElement("span");
+            /**
+             * @param {?WebInspector.Resource} resource
+             */
+            function callback(resource)
+            {
+                if (resource)
+                    element.appendChild(linkifyUncopyable(resource.url, this.rule.sourceLine));
+                else
+                    element.textContent = WebInspector.UIString("via inspector");
+            }
+            WebInspector.cssModel.getViaInspectorResourceForRule(this.rule, callback.bind(this));
+            return element;
+        }
     },
 
     _handleEmptySpaceMouseDown: function(event)
@@ -1301,6 +1266,8 @@ WebInspector.StylePropertiesSection.prototype = {
         if (moveDirection === "forward") {
             this.expand();
             var firstChild = this.propertiesTreeOutline.children[0];
+            while (firstChild && firstChild.inherited)
+                firstChild = firstChild.nextSibling;
             if (!firstChild)
                 this.addNewBlankProperty().startEditing();
             else
@@ -1380,7 +1347,8 @@ WebInspector.ComputedStylePropertiesSection.prototype = {
 
     _isPropertyInherited: function(propertyName)
     {
-        return !(propertyName in this._usedProperties) && !(propertyName in this._alwaysShowComputedProperties);
+        var canonicalName = WebInspector.StylesSidebarPane.canonicalPropertyName(propertyName);
+        return !(canonicalName in this._usedProperties) && !(canonicalName in this._alwaysShowComputedProperties);
     },
 
     update: function()
@@ -1505,7 +1473,8 @@ WebInspector.BlankStylePropertiesSection.prototype = {
                 this.element.addStyleClass("no-affect");
             }
 
-            this._selectorRefElement.textContent = WebInspector.UIString("via inspector");
+            this._selectorRefElement.removeChildren();
+            this._selectorRefElement.appendChild(this._createRuleOriginNode());
             this.expand();
             if (this.element.parentElement) // Might have been detached already.
                 this._moveEditorFromSelector(moveDirection);
@@ -1674,7 +1643,7 @@ WebInspector.StylePropertyTreeElement.prototype = {
             enabledCheckboxElement.className = "enabled-button";
             enabledCheckboxElement.type = "checkbox";
             enabledCheckboxElement.checked = !this.disabled;
-            enabledCheckboxElement.addEventListener("change", this.toggleEnabled.bind(this), false);
+            enabledCheckboxElement.addEventListener("click", this.toggleEnabled.bind(this), false);
         }
 
         var nameElement = document.createElement("span");
@@ -1967,6 +1936,7 @@ WebInspector.StylePropertyTreeElement.prototype = {
 
         this._parentPane._userOperation = true;
         this.property.setDisabled(disabled, callback.bind(this));
+        event.consume();
     },
 
     updateState: function()
@@ -2506,7 +2476,7 @@ WebInspector.StylePropertyTreeElement.prototype.__proto__ = TreeElement.prototyp
 WebInspector.StylesSidebarPane.CSSPropertyPrompt = function(cssCompletions, sidebarPane, isEditingName, acceptCallback)
 {
     // Use the same callback both for applyItemCallback and acceptItemCallback.
-    WebInspector.TextPrompt.call(this, this._buildPropertyCompletions.bind(this), WebInspector.StylesSidebarPane.StyleValueDelimiters);
+    WebInspector.TextPrompt.call(this, this._buildPropertyCompletions.bind(this), WebInspector.StyleValueDelimiters);
     this.setSuggestBoxEnabled("generic-suggest");
     this._cssCompletions = cssCompletions;
     this._sidebarPane = sidebarPane;
@@ -2541,80 +2511,16 @@ WebInspector.StylesSidebarPane.CSSPropertyPrompt.prototype = {
 
     _handleNameOrValueUpDown: function(event)
     {
-        // Handle numeric value increment/decrement only at this point.
-        if (!this._isEditingName && this._handleUpOrDownValue(event))
-            return true;
-
-        return false;
-    },
-
-    _handleUpOrDownValue: function(event)
-    {
-        var arrowKeyPressed = (event.keyIdentifier === "Up" || event.keyIdentifier === "Down");
-        var pageKeyPressed = (event.keyIdentifier === "PageUp" || event.keyIdentifier === "PageDown");
-        if (!arrowKeyPressed && !pageKeyPressed)
-            return false;
-
-        var selection = window.getSelection();
-        if (!selection.rangeCount)
-            return false;
-
-        var selectionRange = selection.getRangeAt(0);
-        if (!selectionRange.commonAncestorContainer.isSelfOrDescendant(this._sidebarPane.valueElement))
-            return false;
-
-        var wordRange = selectionRange.startContainer.rangeOfWord(selectionRange.startOffset, WebInspector.StylesSidebarPane.StyleValueDelimiters, this._sidebarPane.valueElement);
-        var wordString = wordRange.toString();
-        if (this._isValueSuggestion(wordString))
-            return false;
-
-        var replacementString;
-        var prefix, suffix, number;
-
-        var matches;
-        matches = /(.*#)([\da-fA-F]+)(.*)/.exec(wordString);
-        if (matches && matches.length) {
-            prefix = matches[1];
-            suffix = matches[3];
-            number = WebInspector.StylesSidebarPane.alteredHexNumber(matches[2], event);
-
-            replacementString = prefix + number + suffix;
-        } else {
-            matches = /(.*?)(-?(?:\d+(?:\.\d+)?|\.\d+))(.*)/.exec(wordString);
-            if (matches && matches.length) {
-                prefix = matches[1];
-                suffix = matches[3];
-                number = WebInspector.StylesSidebarPane.alteredFloatNumber(parseFloat(matches[2]), event);
-                if (number === null) {
-                    // Need to check for null explicitly.
-                    return false;
-                }
-
-                replacementString = prefix + number + suffix;
-            }
-        }
-
-        if (replacementString) {
-            var replacementTextNode = document.createTextNode(replacementString);
-
-            wordRange.deleteContents();
-            wordRange.insertNode(replacementTextNode);
-
-            var finalSelectionRange = document.createRange();
-            finalSelectionRange.setStart(replacementTextNode, 0);
-            finalSelectionRange.setEnd(replacementTextNode, replacementString.length);
-
-            selection.removeAllRanges();
-            selection.addRange(finalSelectionRange);
-
-            event.handled = true;
-            event.preventDefault();
-
+        function finishHandler(originalValue, replacementString)
+        {
             // Synthesize property text disregarding any comments, custom whitespace etc.
             this._sidebarPane.applyStyleText(this._sidebarPane.nameElement.textContent + ": " + this._sidebarPane.valueElement.textContent, false, false, false);
-
-            return true;
         }
+    
+        // Handle numeric value increment/decrement only at this point.
+        if (!this._isEditingName && WebInspector.handleElementValueModifications(event, this._sidebarPane.valueElement, finishHandler.bind(this), this._isValueSuggestion.bind(this)))
+            return true;
+
         return false;
     },
 

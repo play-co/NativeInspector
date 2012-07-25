@@ -45,13 +45,13 @@ WebInspector.Toolbar = function()
 
 			if (node.className && node.className.indexOf("toggleable") >= 0) {
 				this.element.removeChild(node);
-				removedOne = true;
+				removedNode = true;
 				break;
 			}
 		}
 	} while (removedOne);
 
-    this.element.addEventListener("mousedown", this._toolbarDragStart.bind(this), true);
+    WebInspector.installDragHandle(this.element, this._toolbarDragStart.bind(this), this._toolbarDrag.bind(this), this._toolbarDragEnd.bind(this), (WebInspector.isCompactMode() ? "row-resize" : "default"));
 
     this._dropdownButton = document.getElementById("toolbar-dropdown-arrow");
     this._dropdownButton.addEventListener("click", this._toggleDropdown.bind(this), false);
@@ -81,28 +81,28 @@ WebInspector.Toolbar.prototype = {
         this.resize();
     },
 
+    /**
+     * @return {boolean}
+     */
     _toolbarDragStart: function(event)
     {
         if ((!WebInspector.isCompactMode() && WebInspector.platformFlavor() !== WebInspector.PlatformFlavor.MacLeopard && WebInspector.platformFlavor() !== WebInspector.PlatformFlavor.MacSnowLeopard) || WebInspector.port() == "qt")
-            return;
+            return false;
 
         var target = event.target;
         if (target.hasStyleClass("toolbar-item") && target.hasStyleClass("toggleable"))
-            return;
+            return false;
 
         if (target !== this.element && !target.hasStyleClass("toolbar-item"))
-            return;
+            return false;
 
         this.element.lastScreenX = event.screenX;
         this.element.lastScreenY = event.screenY;
-
-        WebInspector.elementDragStart(this.element, this._toolbarDrag.bind(this), this._toolbarDragEnd.bind(this), event, (WebInspector.isCompactMode() ? "row-resize" : "default"));
+        return true;
     },
 
     _toolbarDragEnd: function(event)
     {
-        WebInspector.elementDragEnd(event);
-
         delete this.element.lastScreenX;
         delete this.element.lastScreenY;
     },

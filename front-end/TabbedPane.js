@@ -373,7 +373,8 @@ WebInspector.TabbedPane.prototype = {
         for (var tabId in this._tabs)
             measuredWidths.push(this._tabs[tabId].measuredWidth);
         
-        var maxWidth = this._calculateMaxWidth(measuredWidths, this._headerContentsElement.offsetWidth);
+        const roundingError = 5;
+        var maxWidth = this._calculateMaxWidth(measuredWidths, this._headerContentsElement.offsetWidth - 5);
         
         for (var tabId in this._tabs) {
             var tab = this._tabs[tabId];
@@ -616,7 +617,7 @@ WebInspector.TabbedPaneTab.prototype = {
         this.tabElement.style.width = width + "px";
         this._width = width;
     },
-    
+
     /**
      * @param {boolean} measuring
      */
@@ -625,7 +626,7 @@ WebInspector.TabbedPaneTab.prototype = {
         var tabElement = document.createElement("div");
         tabElement.addStyleClass("tabbed-pane-header-tab");
         tabElement.tabIndex = -1;
-        
+
         var titleElement = tabElement.createChild("span", "tabbed-pane-header-tab-title");
         titleElement.textContent = this.title;
         titleElement.title = this.tooltip || "";
@@ -645,10 +646,10 @@ WebInspector.TabbedPaneTab.prototype = {
             tabElement.addEventListener("mousedown", this._tabMouseDown.bind(this), false);
             if (this._closeable) {
                 tabElement.addEventListener("contextmenu", this._tabContextMenu.bind(this), false);
-                tabElement.addEventListener("mousemove", this._tabMouseMove.bind(this), false);
+                WebInspector.installDragHandle(tabElement, this._startTabDragging.bind(this), this._tabDragging.bind(this), this._endTabDragging.bind(this), "pointer");
             }
         }
-        
+
         return tabElement;
     },
 
@@ -677,7 +678,6 @@ WebInspector.TabbedPaneTab.prototype = {
         if (event.target.hasStyleClass("tabbed-pane-header-tab-close-button") || event.button === 1)
             return;
         this._tabbedPane.selectTab(this.id, true);
-        this._dragStartX = event.pageX;
     },
 
     _tabContextMenu: function(event)
@@ -704,14 +704,16 @@ WebInspector.TabbedPaneTab.prototype = {
         contextMenu.show(event);
     },
 
-    _tabMouseMove: function(event)
+    /**
+     * @param {Event} event
+     * @return {boolean}
+     */
+    _startTabDragging: function(event)
     {
-        if (isNaN(this._dragStartX))
-            return;
-        if (event.which !== 1)
-            return;
-        this._tabbedPane.selectTab(this.id, true);
-        WebInspector.elementDragStart(this._tabElement, this._tabDragging.bind(this), this._endTabDragging.bind(this), event, "pointer");
+        if (event.target.hasStyleClass("tabbed-pane-header-tab-close-button"))
+            return false;
+        this._dragStartX = event.pageX;
+        return true;
     },
 
     /**
@@ -765,6 +767,5 @@ WebInspector.TabbedPaneTab.prototype = {
         this._tabElement.style.removeProperty("position");
         this._tabElement.style.removeProperty("left");
         delete this._dragStartX;
-        WebInspector.elementDragEnd(event);
     }
 }
