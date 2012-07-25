@@ -159,6 +159,8 @@ WebInspector.ScriptsPanel = function(workspaceForTest)
     this._sourceFramesByUISourceCode = new Map();
     this._reset(false);
 
+	// Added this event listener
+	WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.GlobalObjectCleared, this._globalObjectCleared, this);
     WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.DebuggerWasEnabled, this._debuggerWasEnabled, this);
     WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.DebuggerWasDisabled, this._debuggerWasDisabled, this);
     WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.DebuggerPaused, this._debuggerPaused, this);
@@ -349,6 +351,12 @@ WebInspector.ScriptsPanel.prototype = {
         this._debuggerEnabled = false;
         this._reset(true);
     },
+
+	// Added this callback -cat
+	_globalObjectCleared: function()
+	{
+		this._workspace._reset();
+	},
 
     _reset: function(preserveItems)
     {

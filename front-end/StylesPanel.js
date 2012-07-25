@@ -53,6 +53,10 @@ WebInspector.StylesUISourceCodeProvider.prototype = {
     {
         function populateFrame(frame)
         {
+			// If frame is not defined, then abort -cat
+			if (!frame) {
+				return;
+			}
             for (var i = 0; i < frame.childFrames.length; ++i)
                 populateFrame.call(this, frame.childFrames[i]);
 
