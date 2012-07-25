@@ -754,7 +754,7 @@ BrowserHandler.prototype["Runtime.callFunctionOn"] = function(req) {
 	var tokens = req.params.objectId.split(':');
 	var frame = +tokens[0], scope = +tokens[1], ref = tokens[2];
 
-	// TODO: Does not seem to be necessary
+	// NOTE: Does not seem to be necessary
 }
 
 BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
@@ -849,8 +849,9 @@ BrowserHandler.prototype["Debugger.supportsSeparateScriptCompilationAndExecution
 }
 
 BrowserHandler.prototype["Debugger.setOverlayMessage"] = function(req) {
-	// NOTE: Unsupported
 	this.sendResponse(req.id);
+
+	// NOTE: Seems unnecessary
 }
 
 BrowserHandler.prototype["Debugger.canSetScriptSource"] = function(req) {
@@ -1094,8 +1095,7 @@ BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
 	console.log("Inspect: Get profile headers - ignored.  This is done on load");
 
 	// This is actually not the time to send these.  They should be sent
-	// on reconnect.
-	//this.sendProfileHeaders();
+	// on reconnect so that reconnection is handled properly
 }
 
 BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
@@ -1151,9 +1151,7 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 }
 
 BrowserHandler.prototype["Profiler.removeProfile"] = function(req) {
-	console.log("Inspect: Remove profile is unsupported by V8");
-
-	// TODO: Revisit for heap profiles
+	console.log("Inspect: Remove profile is not supported by V8");
 }
 
 BrowserHandler.prototype["Profiler.clearProfiles"] = function(req) {
@@ -1162,20 +1160,24 @@ BrowserHandler.prototype["Profiler.clearProfiles"] = function(req) {
 	this.client.evaluate("PROFILER.cpuProfiler.deleteAllProfiles()", null, function(resp) {
 		this.sendResponse(req.id);
 	}.bind(this));
+
+	this.client.evaluate("PROFILER.heapProfiler.deleteAllSnapshots()", null, function(resp) {
+		this.sendResponse(req.id);
+	}.bind(this));
 }
 
 BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
-	console.log("Inspect: Taking heap snapshot...");
 	this.sendResponse(req.id);
 
-	var name = "TEST";
+	var title = req.params.title;
+	console.log("Inspect: Taking heap snapshot " + title);
 
 	this.sendEvent("Profiler.reportHeapSnapshotProgress", {
 		done: 10,
 		total: 100
 	});
 
-	this.client.evaluate('PROFILER.heapProfiler.takeSnapshot("' + name +'")', null, function(resp) {
+	this.client.evaluate('PROFILER.heapProfiler.takeSnapshot("' + title +'")', null, function(resp) {
 		console.log("Inspect: Heap snapshot response received.  Repackaging snapshot...");
 
 		this.sendEvent("Profiler.reportHeapSnapshotProgress", {
@@ -1192,20 +1194,18 @@ BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
 			total: 100
 		});
 
-		console.log("Inspect: Heap snapshot repackaged (" + str.length + " bytes).  Delivering to browser...");
-
-		this.sendProfileHeader("TEST", data.snapshot.uid, "HEAP");
+		this.sendProfileHeader(title, data.snapshot.uid, "HEAP");
 
 		this.client.profileCache.set('HEAP', data.snapshot.uid, data);
 
-		console.log("Inspect: Heap snapshot delivered to browser");
+		console.log("Inspect: Heap snapshot repackaged (" + str.length + " bytes).  Sent profile header to browser");
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Profiler.getObjectByHeapObjectId"] = function(req) {
-	console.log("Inspect: Get heap object");
+	console.log("Inspect: Ignored heap object request.  Not implemented");
 
-	// TODO
+	// NOTE: Seems unnecessary
 }
 
 BrowserHandler.prototype["Profiler.disable"] = function(req) {

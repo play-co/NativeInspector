@@ -2875,7 +2875,10 @@
                 "name": "clearProfiles"
             },
             {
-                "name": "takeHeapSnapshot"
+                "name": "takeHeapSnapshot",
+                "parameters": [
+                    { "name": "title", "type": "string" }
+                ]
             },
             {
                 "name": "collectGarbage"

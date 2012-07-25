@@ -1052,6 +1052,12 @@ WebInspector.ProfilesPanel.prototype = {
 
     takeHeapSnapshot: function()
     {
+		// Add prompt for snapshot title -cat
+		var title = prompt("What should the heap snapshot be called?", "HEAPS OF FUN");
+		if (!title) {
+			return;
+		}
+
         var temporaryRecordingProfile = this.findTemporaryProfile(WebInspector.HeapSnapshotProfileType.TypeId);
         if (!temporaryRecordingProfile) {
             var profileTypeObject = this.getProfileType(WebInspector.HeapSnapshotProfileType.TypeId);
@@ -1061,7 +1067,7 @@ WebInspector.ProfilesPanel.prototype = {
         function done() {
             this._launcherView.profileFinished();
         }
-        ProfilerAgent.takeHeapSnapshot(done.bind(this));
+        ProfilerAgent.takeHeapSnapshot(title, done.bind(this));
         WebInspector.userMetrics.ProfilesHeapProfileTaken.record();
     },
 
