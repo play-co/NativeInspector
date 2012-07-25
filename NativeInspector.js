@@ -1077,7 +1077,7 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 	this.client.evaluate("PROFILER.cpuProfiler.getProfileHeaders()", null, function(resp) {
 		var obj = reconstructObject(resp);
 
-		console.log("Inspect: Got " + obj.length + " profile headers");
+		console.log("Inspect: Got " + obj.length + " CPU profile headers");
 
 		for (var ii = 0, len = obj.length; ii < len; ++ii) {
 			var profile = JSON.parse(obj[ii]);
@@ -1090,6 +1090,8 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 
 	this.client.evaluate("PROFILER.heapProfiler.getSnapshotsCount()", null, function(resp) {
 		var count = resp.body.value;
+
+		console.log("Inspect: Got " + count + " heap profile headers");
 
 		for (var uid = 0; uid < count; ++uid) {
 			var profile = this.client.profileCache.get("HEAP", uid);
