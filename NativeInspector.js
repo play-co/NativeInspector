@@ -1060,7 +1060,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 				isProfiling: false
 			});
 
-			if (resp.success) {
+			if (resp.success && resp.body) {
 				var obj = reconstructObject(resp);
 				var data = JSON.parse(joinData(obj));
 
@@ -1075,44 +1075,48 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 
 BrowserSession.prototype.sendProfileHeaders = function() {
 	this.client.evaluate("PROFILER.cpuProfiler.getProfileHeaders()", null, function(resp) {
-		var obj = reconstructObject(resp);
+		if (resp.success && resp.body) {
+			var obj = reconstructObject(resp);
 
-		console.log("Inspect: Got " + obj.length + " CPU profile headers");
+			console.log("Inspect: Got " + obj.length + " CPU profile headers");
 
-		for (var ii = 0, len = obj.length; ii < len; ++ii) {
-			var profile = JSON.parse(obj[ii]);
+			for (var ii = 0, len = obj.length; ii < len; ++ii) {
+				var profile = JSON.parse(obj[ii]);
 
-			this.client.profileCache.gotHeader(profile.typeId, profile.uid, profile.title);
+				this.client.profileCache.gotHeader(profile.typeId, profile.uid, profile.title);
 
-			this.sendProfileHeader(profile.title, profile.uid, profile.typeId);
+				this.sendProfileHeader(profile.title, profile.uid, profile.typeId);
+			}
 		}
 	}.bind(this));
 
 	this.client.evaluate("PROFILER.heapProfiler.getSnapshotsCount()", null, function(resp) {
-		var count = resp.body.value;
+		if (resp.body && resp.body.type !== "undefined") {
+			var count = resp.body.value;
 
-		console.log("Inspect: Got " + count + " heap profile headers");
+			console.log("Inspect: Got " + count + " heap profile headers");
 
-		for (var uid = 0; uid < count; ++uid) {
-			var profile = this.client.profileCache.get("HEAP", uid);
+			for (var uid = 0; uid < count; ++uid) {
+				var profile = this.client.profileCache.get("HEAP", uid);
 
-			if (profile) {
-				this.sendEvent("Profiler.addHeapSnapshotChunk", {
-					uid: profile.snapshot.uid,
-					chunk: JSON.stringify(profile)
-				});
-				this.sendEvent("Profiler.finishHeapSnapshot", {
-					uid: profile.snapshot.uid
-				});
-			} else {
-				this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + uid + ")", null, function(resp) {
-					var obj = reconstructObject(resp);
-					var data = JSON.parse(joinData(obj));
+				if (profile) {
+					this.sendEvent("Profiler.addHeapSnapshotChunk", {
+						uid: profile.snapshot.uid,
+						chunk: JSON.stringify(profile)
+					});
+					this.sendEvent("Profiler.finishHeapSnapshot", {
+						uid: profile.snapshot.uid
+					});
+				} else {
+					this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + uid + ")", null, function(resp) {
+						var obj = reconstructObject(resp);
+						var data = JSON.parse(joinData(obj));
 
-					this.sendProfileHeader(data.snapshot.title, data.snapshot.uid, "HEAP");
+						this.sendProfileHeader(data.snapshot.title, data.snapshot.uid, "HEAP");
 
-					this.client.profileCache.set("HEAP", data.snapshot.uid, data);
-				}.bind(this));
+						this.client.profileCache.set("HEAP", data.snapshot.uid, data);
+					}.bind(this));
+				}
 			}
 		}
 	}.bind(this));
@@ -1149,29 +1153,33 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 	} else {
 		if (req.params.type === "CPU") {
 			this.client.evaluate("PROFILER.cpuProfiler.getProfile(" + req.params.uid + ")", null, function(resp) {
-				var obj = reconstructObject(resp);
-				var data = JSON.parse(joinData(obj));
+				if (resp.body && resp.body.type !== "undefined") {
+					var obj = reconstructObject(resp);
+					var data = JSON.parse(joinData(obj));
 
-				this.sendResponse(req.id, {
-					"profile": {
-						"head": data
-					}
-				});
+					this.sendResponse(req.id, {
+						"profile": {
+							"head": data
+						}
+					});
 
-				this.client.profileCache.set(req.params.type, req.params.uid, data);
+					this.client.profileCache.set(req.params.type, req.params.uid, data);
+				}
 			}.bind(this));
 		} else if (req.params.type === "HEAP") {
 			this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + req.params.uid + ")", null, function(resp) {
-				var obj = reconstructObject(resp);
-				var data = JSON.parse(joinData(obj));
+				if (resp.body && resp.body.type !== "undefined") {
+					var obj = reconstructObject(resp);
+					var data = JSON.parse(joinData(obj));
 
-				this.sendResponse(req.id, {
-					"profile": {
-						"head": data
-					}
-				});
+					this.sendResponse(req.id, {
+						"profile": {
+							"head": data
+						}
+					});
 
-				this.client.profileCache.set(req.params.type, req.params.uid, data);
+					this.client.profileCache.set(req.params.type, req.params.uid, data);
+				}
 			}.bind(this));
 		}
 	}
@@ -1205,27 +1213,29 @@ BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
 	});
 
 	this.client.evaluate('PROFILER.heapProfiler.takeSnapshot("' + title +'")', null, function(resp) {
-		console.log("Inspect: Heap snapshot response received.  Repackaging snapshot...");
+		if (resp.body && resp.body.type !== "undefined") {
+			console.log("Inspect: Heap snapshot response received.  Repackaging snapshot...");
 
-		this.sendEvent("Profiler.reportHeapSnapshotProgress", {
-			done: 70,
-			total: 100
-		});
+			this.sendEvent("Profiler.reportHeapSnapshotProgress", {
+				done: 70,
+				total: 100
+			});
 
-		var obj = reconstructObject(resp);
-		var str = joinData(obj);
-		var data = JSON.parse(str);
+			var obj = reconstructObject(resp);
+			var str = joinData(obj);
+			var data = JSON.parse(str);
 
-		this.sendEvent("Profiler.reportHeapSnapshotProgress", {
-			done: 100,
-			total: 100
-		});
+			this.sendEvent("Profiler.reportHeapSnapshotProgress", {
+				done: 100,
+				total: 100
+			});
 
-		this.sendProfileHeader(title, data.snapshot.uid, "HEAP");
+			this.sendProfileHeader(title, data.snapshot.uid, "HEAP");
 
-		this.client.profileCache.set('HEAP', data.snapshot.uid, data);
+			this.client.profileCache.set('HEAP', data.snapshot.uid, data);
 
-		console.log("Inspect: Heap snapshot repackaged (" + str.length + " bytes).  Sent profile header to browser");
+			console.log("Inspect: Heap snapshot repackaged (" + str.length + " bytes).  Sent profile header to browser");
+		}
 	}.bind(this));
 }
 
