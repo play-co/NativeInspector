@@ -6,9 +6,9 @@ var io = require('socket.io');
 var child_process = require('child_process');
 var urllib = require('url');
 
-var BROWSER_PORT = 9888;
+var BROWSER_PORT = 9220;
+var CONTROL_PORT = 9221;
 var DEBUG_PORT = 9222;
-var CONTROL_PORT = 9889;
 var WEBROOT = require('path').join(__dirname, 'front-end');
 
 
@@ -653,7 +653,9 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 
 	// Print banner
 	this.client.version(function(resp) {
-		this.addConsoleMessage("info", "--- Initialization procedures completed.  Device uses V8 version " + resp.body.V8Version + ".");
+		if (resp.success && resp.body && resp.body.type !== "undefined") {
+			this.addConsoleMessage("info", "--- Initialization procedures completed.  Device uses V8 version " + resp.body.V8Version + ".");
+		}
 	}.bind(this));
 }
 
@@ -917,19 +919,23 @@ BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
 	var bp = req.params;
 
 	this.client.setBreakpointByUrl(bp.lineNumber, bp.url, bp.columnNumber, true, bp.condition, function(resp) {
-		var actual = resp.body.actual_locations;
-		var locations = [];
-		for (var ii = 0; ii < actual.length; ++ii) {
-			locations.push({
-				lineNumber: actual[ii].line,
-				columnNumber: actual[ii].column,
-				scriptId: String(actual[ii].script_id)
+		if (resp.success && resp.body && resp.body.type !== "undefined") {
+			var actual = resp.body.actual_locations;
+			var locations = [];
+
+			for (var ii = 0; ii < actual.length; ++ii) {
+				locations.push({
+					lineNumber: actual[ii].line,
+					columnNumber: actual[ii].column,
+					scriptId: String(actual[ii].script_id)
+				});
+			}
+
+			this.sendResponse(req.id, {
+				breakpointId: String(resp.body.breakpoint),
+				locations: locations
 			});
 		}
-		this.sendResponse(req.id, {
-			breakpointId: String(resp.body.breakpoint),
-			locations: locations
-		});
 	}.bind(this));
 }
 
@@ -977,7 +983,7 @@ BrowserHandler.prototype["Debugger.resume"] = function(req) {
 BrowserHandler.prototype["Debugger.evaluateOnCallFrame"] = function(req) {
 	this.client.evaluate(req.params.expression, req.params.callFrameId, function(resp) {
 		// If evaulation succeeded,
-		if (resp.success) {
+		if (resp.success && resp.body && resp.body.type !== "undefined") {
 			this.sendResponse(req.id, {
 				result: getRemoteObject(resp.body),
 				wasThrown: false
@@ -1060,7 +1066,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 				isProfiling: false
 			});
 
-			if (resp.success && resp.body) {
+			if (resp.success && resp.body && resp.body.type !== "undefined") {
 				var obj = reconstructObject(resp);
 				var data = JSON.parse(joinData(obj));
 
@@ -1075,7 +1081,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 
 BrowserSession.prototype.sendProfileHeaders = function() {
 	this.client.evaluate("PROFILER.cpuProfiler.getProfileHeaders()", null, function(resp) {
-		if (resp.success && resp.body) {
+		if (resp.success && resp.body && resp.body.type !== "undefined") {
 			var obj = reconstructObject(resp);
 
 			console.log("Inspect: Got " + obj.length + " CPU profile headers");
@@ -1091,7 +1097,7 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 	}.bind(this));
 
 	this.client.evaluate("PROFILER.heapProfiler.getSnapshotsCount()", null, function(resp) {
-		if (resp.body && resp.body.type !== "undefined") {
+		if (resp.success && resp.body && resp.body.type !== "undefined") {
 			var count = resp.body.value;
 
 			console.log("Inspect: Got " + count + " heap profile headers");
@@ -1153,7 +1159,7 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 	} else {
 		if (req.params.type === "CPU") {
 			this.client.evaluate("PROFILER.cpuProfiler.getProfile(" + req.params.uid + ")", null, function(resp) {
-				if (resp.body && resp.body.type !== "undefined") {
+				if (resp.success && resp.body && resp.body.type !== "undefined") {
 					var obj = reconstructObject(resp);
 					var data = JSON.parse(joinData(obj));
 
@@ -1168,7 +1174,7 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 			}.bind(this));
 		} else if (req.params.type === "HEAP") {
 			this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + req.params.uid + ")", null, function(resp) {
-				if (resp.body && resp.body.type !== "undefined") {
+				if (resp.success && resp.body && resp.body.type !== "undefined") {
 					var obj = reconstructObject(resp);
 					var data = JSON.parse(joinData(obj));
 
@@ -1213,7 +1219,7 @@ BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
 	});
 
 	this.client.evaluate('PROFILER.heapProfiler.takeSnapshot("' + title +'")', null, function(resp) {
-		if (resp.body && resp.body.type !== "undefined") {
+		if (resp.success && resp.body && resp.body.type !== "undefined") {
 			console.log("Inspect: Heap snapshot response received.  Repackaging snapshot...");
 
 			this.sendEvent("Profiler.reportHeapSnapshotProgress", {
@@ -1586,13 +1592,15 @@ Client.prototype.request = function(msg, callback) {
 Client.prototype.handleBreak = function(body) {
 	if (this.breakpointsActive) {
 		this.backtrace(function(resp) {
-			var frames = convertCallFrames(resp.body.frames);
+			if (resp.success && resp.body && resp.body.type !== "undefined") {
+				var frames = convertCallFrames(resp.body.frames);
 
-			this.browserServer.broadcastEvent("Debugger.paused", {
-				callFrames: frames,
-				reason: "Breakpoint @ " + body.script.name + ":" + body.script.lineOffset,
-				data: "Source line text: " + body.sourceLineText
-			});
+				this.browserServer.broadcastEvent("Debugger.paused", {
+					callFrames: frames,
+					reason: "Breakpoint @ " + body.script.name + ":" + body.script.lineOffset,
+					data: "Source line text: " + body.sourceLineText
+				});
+			}
 		}.bind(this));
 	} else {
 		this.exitBreak(function(resp) {
