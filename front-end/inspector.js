@@ -86,8 +86,6 @@ var WebInspector = {
         this._toggleConsoleButton = new WebInspector.StatusBarButton(WebInspector.UIString("Show console."), "console-status-bar-item");
         this._toggleConsoleButton.addEventListener("click", this._toggleConsoleButtonClicked.bind(this), false);
 
-        anchoredStatusBar.appendChild(this._toggleConsoleButton.element);
-
 		// Remove all children of element to clean up after previous runs -cat
 		var removedOne;
 		do {
@@ -102,6 +100,8 @@ var WebInspector = {
 				}
 			}
 		} while (removedOne);
+
+        anchoredStatusBar.appendChild(this._toggleConsoleButton.element);
 
         if (this.panels.elements)
             anchoredStatusBar.appendChild(this.panels.elements.nodeSearchButton.element);
