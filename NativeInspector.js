@@ -309,8 +309,12 @@ LogCatter.prototype.initialize = function(server) {
 				if (jsmatch && jsmatch.length >= 2) {
 					var jslog = jsmatch[1];
 
-					// React to seeing a new JS log message
-					server.addConsoleMessage("debug", jslog);
+					// If log message starts with LOG,
+					if (jslog.indexOf("LOG") === 0) {
+						server.addConsoleMessage("debug", jslog);
+					} else {
+						server.addConsoleMessage("warning", jslog);
+					}
 				}
 			}
 
@@ -538,7 +542,7 @@ BrowserSession.prototype.onDebuggerConnect = function() {
 		this.connected = true;
 
 		if (this.loaded) {
-			this.addConsoleMessage("info", "--- Device reconnected.");
+			this.addConsoleMessage("error", "--- Device reconnected.");
 
 			this.onLoadAndDebug();
 		}
@@ -728,7 +732,7 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 	// Print banner
 	this.client.version(function(resp) {
 		if (resp.success && resp.body && resp.body.type !== "undefined") {
-			this.addConsoleMessage("info", "--- Initialization procedures completed.  Device uses V8 version " + resp.body.V8Version + ".");
+			this.addConsoleMessage("error", "--- Initialization procedures completed.  Device uses V8 version " + resp.body.V8Version + ".");
 		}
 	}.bind(this));
 }
@@ -737,12 +741,12 @@ BrowserSession.prototype.onLoad = function() {
 	if (!this.loaded) {
 		this.loaded = true;
 
-		this.addConsoleMessage("info", "The Native Web Inspector allows you to debug and profile JavaScript code running live on a device.");
-		this.addConsoleMessage("info", "The application must have been built with the --debug flag.");
-		this.addConsoleMessage("info", "And it can only debug one application at a time, so be sure to force close other debug-mode applications.");
+		this.addConsoleMessage("error", "The Native Web Inspector allows you to debug and profile JavaScript code running live on a device.");
+		this.addConsoleMessage("error", "The application must have been built with the --debug flag.");
+		this.addConsoleMessage("error", "And it can only debug one application at a time, so be sure to force close other debug-mode applications.");
 
 		if (this.connected) {
-			this.addConsoleMessage("info", "--- Device is connected.");
+			this.addConsoleMessage("error", "--- Device is connected.");
 
 			this.onLoadAndDebug();
 		} else {
@@ -1690,7 +1694,7 @@ Client.prototype.handleEvent = function(obj) {
 		break;
 	case "afterCompile":
 		if (obj.body && obj.body.script) {
-			this.browserServer.addConsoleMessage("info", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
+			this.browserServer.addConsoleMessage("error", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
 
 			this.browserServer.broadcastEvent("Debugger.scriptParsed", makeScriptInfo(obj.body.script));
 		}

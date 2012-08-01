@@ -97,9 +97,9 @@ WebInspector.ConsoleView = function(hideContextSelector)
 
     this.allElement = createFilterElement.call(this, "all", WebInspector.UIString("All"));
     createDividerElement.call(this);
-    this.errorElement = createFilterElement.call(this, "errors", WebInspector.UIString("Errors"));
-    this.warningElement = createFilterElement.call(this, "warnings", WebInspector.UIString("Warnings"));
-    this.logElement = createFilterElement.call(this, "logs", WebInspector.UIString("Logs"));
+    this.errorElement = createFilterElement.call(this, "errors", WebInspector.UIString("[Only System+JavaScript Logs]"));
+    this.warningElement = createFilterElement.call(this, "warnings", WebInspector.UIString("[Only Native+JavaScript Logs]"));
+    this.logElement = createFilterElement.call(this, "logs", WebInspector.UIString("[Only JavaScript Logs]"));
 
     this.filter(this.allElement, false);
     this._registerShortcuts();
