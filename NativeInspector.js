@@ -279,6 +279,61 @@ ControlSession.prototype.disconnect = function() {
 }
 
 
+//// Log Catter
+// Spawns adb logcat and pulls JS messages from the output
+
+LogCatter = Class.create();
+
+LogCatter.prototype.initialize = function(server) {
+	var tool = child_process.spawn('adb', ['logcat']);
+	var out = "";
+
+	this.tool = tool;
+
+	tool.stdout.on('data', function(data) {
+		// Accumulate data until we get a complete line
+		out += String(data);
+
+		// Split data into lines
+		var lines = out.split('\n');
+
+		// If we got more than 1 newline (at least one line to process),
+		if (lines.length >= 2) {
+			// For each line token up to the last one,
+			for (var ii = 0; ii < lines.length - 1; ++ii) {
+				// Trim whitespace from each line
+				var line = lines[ii].trim();
+
+				// If it matches regex for a JS log line,
+				var jsmatch = line.match(/^[A-Z]+\/JS[^:]+:\s+(.*)/);
+				if (jsmatch && jsmatch.length >= 2) {
+					var jslog = jsmatch[1];
+
+					// React to seeing a new JS log message
+					server.addConsoleMessage("debug", jslog);
+				}
+			}
+
+			// Store off any partial lines at the end for next time
+			out = lines[lines.length-1];
+		}
+	});
+
+	tool.on('exit', function(code) {
+		if (code !== 0) {
+			server.addConsoleMessage("debug", "adb logcat process terminated with code " + code);
+		}
+	});
+}
+
+LogCatter.prototype.kill = function() {
+	if (this.tool) {
+		this.tool.kill();
+		delete this.tool;
+	}
+}
+
+
 //// Browser Server
 // Server for backend Web Inspector JavaScript
 
@@ -297,7 +352,26 @@ BrowserServer.prototype.initialize = function(app, client) {
 
 	ws.sockets.on('connection', this._on_conn.bind(this));
 
+	client.pubsub.subscribe(this, "connect", this.onDebuggerConnect.bind(this));
+	client.pubsub.subscribe(this, "close", this.onDebuggerClose.bind(this));
+
 	console.log("Inspect: Listening for browsers");
+}
+
+BrowserServer.prototype.onDebuggerConnect = function() {
+	if (this.logCatter) {
+		this.logCatter.kill();
+		delete this.logCatter;
+	}
+
+	this.logCatter = new LogCatter(this);
+}
+
+BrowserServer.prototype.onDebuggerClose = function() {
+	if (this.logCatter) {
+		this.logCatter.kill();
+		delete this.logCatter;
+	}
 }
 
 BrowserServer.prototype._on_conn = function(socket) {
