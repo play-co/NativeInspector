@@ -47,6 +47,10 @@ WebInspector.ConsoleView = function(hideContextSelector)
     this._contextSelector = new WebInspector.StatusBarComboBox(this._updateIsolatedWorldSelector.bind(this), "console-context");
     this._isolatedWorldSelector = new WebInspector.StatusBarComboBox(null, "console-context");
 
+	// Added this to hide the drop-down boxes next to the log filter buttons
+	// in the status bar -cat
+	hideContextSelector = true;
+
     if (hideContextSelector) {
         this._contextSelector.element.addStyleClass("hidden");
         this._isolatedWorldSelector.element.addStyleClass("hidden");
@@ -88,7 +92,6 @@ WebInspector.ConsoleView = function(hideContextSelector)
         categoryElement.textContent = label;
 
         this._filterBarElement.appendChild(categoryElement);
-
         return categoryElement;
     }
 
