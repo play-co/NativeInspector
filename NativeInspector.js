@@ -1154,6 +1154,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 				this.sendProfileHeader(obj.title, obj.uid, 'CPU');
 			} catch (err) {
 				console.log("Inspect: Unable to process CPU Profiler response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
+				this.addConsoleMessage("error", "--- Error in CPU Profiler response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
 			}
 		}.bind(this));
 	}
@@ -1175,6 +1176,7 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 			}
 		} catch (err) {
 			console.log("Inspect: Unable to process Profiler Headers response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
+			this.addConsoleMessage("error", "--- Error in Profiler Headers response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
 		}
 	}.bind(this));
 
@@ -1206,6 +1208,7 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 							this.client.profileCache.set("HEAP", data.snapshot.uid, data);
 						} catch (err) {
 							console.log("Inspect: Unable to process HEAP GetSnapshot response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
+							this.addConsoleMessage("error", "--- Error in HEAP GetSnapshot response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
 						}
 					}.bind(this));
 				}
@@ -1258,6 +1261,7 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 					this.client.profileCache.set(req.params.type, req.params.uid, data);
 				} catch (err) {
 					console.log("Inspect: Unable to process CPU GetProfile response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
+					this.addConsoleMessage("error", "--- Error in CPU GetProfile response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
 				}
 			}.bind(this));
 		} else if (req.params.type === "HEAP") {
@@ -1275,6 +1279,7 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 					this.client.profileCache.set(req.params.type, req.params.uid, data);
 				} catch (err) {
 					console.log("Inspect: Unable to process HEAP GetSnapshot response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
+					this.addConsoleMessage("error", "--- Error in HEAP GetSnapshot response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
 				}
 			}.bind(this));
 		}
@@ -1333,6 +1338,7 @@ BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
 			console.log("Inspect: Heap snapshot repackaged (" + str.length + " bytes).  Sent profile header to browser");
 		} catch (err) {
 			console.log("Inspect: Unable to process HEAP TakeSnapshot response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
+			this.addConsoleMessage("error", "--- Error in HEAP TakeSnapshot response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
 		}
 	}.bind(this));
 }

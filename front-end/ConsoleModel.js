@@ -256,6 +256,10 @@ WebInspector.ConsoleDispatcher.prototype = {
             payload.stackTrace,
             payload.networkRequestId ? WebInspector.networkRequestById(payload.networkRequestId) : undefined);
         this._console.addMessage(consoleMessage);
+
+		if (payload.level === "error") {
+			WebInspector.showPanel("console");
+		}
     },
 
     /**
