@@ -1144,7 +1144,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 				isProfiling: false
 			});
 
-			if (resp.success && resp.body && resp.body.type !== "undefined") {
+			try {
 				var obj = reconstructObject(resp);
 				var data = JSON.parse(joinData(obj));
 
@@ -1152,6 +1152,8 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 				this.client.profileCache.set('CPU', obj.uid, data);
 
 				this.sendProfileHeader(obj.title, obj.uid, 'CPU');
+			} catch (err) {
+				console.log("Inspect: Unable to process CPU Profiler response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
 			}
 		}.bind(this));
 	}
@@ -1159,7 +1161,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 
 BrowserSession.prototype.sendProfileHeaders = function() {
 	this.client.evaluate("PROFILER.cpuProfiler.getProfileHeaders()", null, function(resp) {
-		if (resp.success && resp.body && resp.body.type !== "undefined") {
+		try {
 			var obj = reconstructObject(resp);
 
 			console.log("Inspect: Got " + obj.length + " CPU profile headers");
@@ -1171,6 +1173,8 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 
 				this.sendProfileHeader(profile.title, profile.uid, profile.typeId);
 			}
+		} catch (err) {
+			console.log("Inspect: Unable to process Profiler Headers response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
 		}
 	}.bind(this));
 
@@ -1193,12 +1197,16 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 					});
 				} else {
 					this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + uid + ")", null, function(resp) {
-						var obj = reconstructObject(resp);
-						var data = JSON.parse(joinData(obj));
+						try {
+							var obj = reconstructObject(resp);
+							var data = JSON.parse(joinData(obj));
 
-						this.sendProfileHeader(data.snapshot.title, data.snapshot.uid, "HEAP");
+							this.sendProfileHeader(data.snapshot.title, data.snapshot.uid, "HEAP");
 
-						this.client.profileCache.set("HEAP", data.snapshot.uid, data);
+							this.client.profileCache.set("HEAP", data.snapshot.uid, data);
+						} catch (err) {
+							console.log("Inspect: Unable to process HEAP GetSnapshot response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
+						}
 					}.bind(this));
 				}
 			}
@@ -1237,7 +1245,7 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 	} else {
 		if (req.params.type === "CPU") {
 			this.client.evaluate("PROFILER.cpuProfiler.getProfile(" + req.params.uid + ")", null, function(resp) {
-				if (resp.success && resp.body && resp.body.type !== "undefined") {
+				try {
 					var obj = reconstructObject(resp);
 					var data = JSON.parse(joinData(obj));
 
@@ -1248,11 +1256,13 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 					});
 
 					this.client.profileCache.set(req.params.type, req.params.uid, data);
+				} catch (err) {
+					console.log("Inspect: Unable to process CPU GetProfile response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
 				}
 			}.bind(this));
 		} else if (req.params.type === "HEAP") {
 			this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + req.params.uid + ")", null, function(resp) {
-				if (resp.success && resp.body && resp.body.type !== "undefined") {
+				try {
 					var obj = reconstructObject(resp);
 					var data = JSON.parse(joinData(obj));
 
@@ -1263,6 +1273,8 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 					});
 
 					this.client.profileCache.set(req.params.type, req.params.uid, data);
+				} catch (err) {
+					console.log("Inspect: Unable to process HEAP GetSnapshot response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
 				}
 			}.bind(this));
 		}
@@ -1297,7 +1309,7 @@ BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
 	});
 
 	this.client.evaluate('PROFILER.heapProfiler.takeSnapshot("' + title +'")', null, function(resp) {
-		if (resp.success && resp.body && resp.body.type !== "undefined") {
+		try {
 			console.log("Inspect: Heap snapshot response received.  Repackaging snapshot...");
 
 			this.sendEvent("Profiler.reportHeapSnapshotProgress", {
@@ -1319,6 +1331,8 @@ BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
 			this.client.profileCache.set('HEAP', data.snapshot.uid, data);
 
 			console.log("Inspect: Heap snapshot repackaged (" + str.length + " bytes).  Sent profile header to browser");
+		} catch (err) {
+			console.log("Inspect: Unable to process HEAP TakeSnapshot response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
 		}
 	}.bind(this));
 }
