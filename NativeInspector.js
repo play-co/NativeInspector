@@ -1713,7 +1713,7 @@ Client.prototype.handleBreak = function(body) {
 
 				this.browserServer.broadcastEvent("Debugger.paused", {
 					callFrames: frames,
-					reason: "Breakpoint @ " + body.script.name + ":" + body.script.lineOffset,
+					reason: "Breakpoint @ " + body.script.name + ":" + body.sourceLine,
 					data: "Source line text: " + body.sourceLineText
 				});
 			}
@@ -1725,14 +1725,25 @@ Client.prototype.handleBreak = function(body) {
 	}
 }
 
+Client.prototype.handleException = function(body) {
+	var text = body.exception.value || body.exception.text;
+
+	this.browserServer.addConsoleMessage("warning", "-- Handling exception: " + text + ", from " + body.script.name + ":" + body.sourceLine);
+
+	this.handleBreak(body);
+}
+
 Client.prototype.handleEvent = function(obj) {
 	switch (obj.event) {
 	case "break":
 		this.handleBreak(obj.body);
 		break;
+	case "exception":
+		this.handleException(obj.body);
+		break;
 	case "afterCompile":
 		if (obj.body && obj.body.script) {
-			this.browserServer.addConsoleMessage("error", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
+			this.browserServer.addConsoleMessage("warning", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
 
 			this.browserServer.broadcastEvent("Debugger.scriptParsed", makeScriptInfo(obj.body.script));
 		}
