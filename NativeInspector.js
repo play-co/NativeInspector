@@ -1047,7 +1047,25 @@ BrowserHandler.prototype["Debugger.pause"] = function(req) {
 	this.client.breakpointsActive = true;
 
 	this.client.suspend(function(resp) {
-		this.sendResponse(req.id);
+		if (resp.running) {
+			this.sendResponse(req.id);
+			this.addConsoleMessage("error", "--- Device rejected our pause request");
+		} else {
+			this.client.backtrace(function(resp) {
+				try {
+					var frames = convertCallFrames(resp.body.frames);
+
+					this.server.broadcastEvent("Debugger.paused", {
+						callFrames: frames
+					});
+				} catch (err) {
+					console.log("Inspect: Unable to process Call Frames response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
+					this.addConsoleMessage("error", "--- Error in Call Frames response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
+				}
+
+				this.sendResponse(req.id);
+			}.bind(this));
+		}
 	}.bind(this));
 }
 
