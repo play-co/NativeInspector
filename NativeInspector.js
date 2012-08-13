@@ -1040,7 +1040,25 @@ BrowserHandler.prototype["Debugger.pause"] = function(req) {
 	this.client.breakpointsActive = true;
 
 	this.client.suspend(function(resp) {
-		this.sendResponse(req.id);
+		if (resp.running) {
+			this.sendResponse(req.id);
+			this.addConsoleMessage("error", "--- Device rejected our pause request");
+		} else {
+			this.client.backtrace(function(resp) {
+				try {
+					var frames = convertCallFrames(resp.body.frames);
+
+					this.server.broadcastEvent("Debugger.paused", {
+						callFrames: frames
+					});
+				} catch (err) {
+					console.log("Inspect: Unable to process Call Frames response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
+					this.addConsoleMessage("error", "--- Error in Call Frames response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
+				}
+
+				this.sendResponse(req.id);
+			}.bind(this));
+		}
 	}.bind(this));
 }
 
@@ -1688,7 +1706,7 @@ Client.prototype.handleBreak = function(body) {
 
 				this.browserServer.broadcastEvent("Debugger.paused", {
 					callFrames: frames,
-					reason: "Breakpoint @ " + body.script.name + ":" + body.script.lineOffset,
+					reason: "Breakpoint @ " + body.script.name + ":" + body.sourceLine,
 					data: "Source line text: " + body.sourceLineText
 				});
 			}
@@ -1700,14 +1718,25 @@ Client.prototype.handleBreak = function(body) {
 	}
 }
 
+Client.prototype.handleException = function(body) {
+	var text = body.exception.value || body.exception.text;
+
+	this.browserServer.addConsoleMessage("warning", "-- Handling exception: " + text + ", from " + body.script.name + ":" + body.sourceLine);
+
+	this.handleBreak(body);
+}
+
 Client.prototype.handleEvent = function(obj) {
 	switch (obj.event) {
 	case "break":
 		this.handleBreak(obj.body);
 		break;
+	case "exception":
+		this.handleException(obj.body);
+		break;
 	case "afterCompile":
 		if (obj.body && obj.body.script) {
-			this.browserServer.addConsoleMessage("error", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
+			this.browserServer.addConsoleMessage("warning", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
 
 			this.browserServer.broadcastEvent("Debugger.scriptParsed", makeScriptInfo(obj.body.script));
 		}
