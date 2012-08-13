@@ -23,13 +23,6 @@ var Class = {
 	}
 }
 
-Function.prototype.bind = function(ctx) {
-	var that = this;
-	return function() {
-		that.apply(ctx, arguments);
-	}
-}
-
 
 //// SwaggerTagger
 // Assigns ID numbers to objects
