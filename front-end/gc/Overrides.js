@@ -1,3 +1,6 @@
+// Initialize a counter indicating busy status of browser-side library
+WebInspector.busyCtr = 0;
+
 WebInspector.connectSocket = function() {
 	WebInspector.socketConnected = false;
 	WebInspector.socket = io.connect("http://" + window.location.host + '/');
@@ -22,7 +25,13 @@ WebInspector.connectSocket = function() {
 		WebInspector.socketConnected = true;
 
 		InspectorFrontendHost.sendMessageToBackend = WebInspector.socket.send.bind(WebInspector.socket);
-		WebInspector.doLoadedDone();
+
+		// If not busy (ie. in heap data analysis mode),
+		if (WebInspector.busyCtr == 0) {
+			// This is conditional so that it does not reset everything when
+			// the browser disconnects during a heavy work period.
+			WebInspector.doLoadedDone();
+		}
 	});
 
 	WebInspector.socket.on('disconnect', function() {

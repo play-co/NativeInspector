@@ -1058,6 +1058,9 @@ WebInspector.ProfilesPanel.prototype = {
 			return;
 		}
 
+		// Increment busy count -cat
+		WebInspector.busyCtr++;
+
         var temporaryRecordingProfile = this.findTemporaryProfile(WebInspector.HeapSnapshotProfileType.TypeId);
         if (!temporaryRecordingProfile) {
             var profileTypeObject = this.getProfileType(WebInspector.HeapSnapshotProfileType.TypeId);
@@ -1066,6 +1069,9 @@ WebInspector.ProfilesPanel.prototype = {
         this._launcherView.profileStarted();
         function done() {
             this._launcherView.profileFinished();
+
+			// Decrement busy count -cat
+			WebInspector.busyCtr--;
         }
         ProfilerAgent.takeHeapSnapshot(title, done.bind(this));
         WebInspector.userMetrics.ProfilesHeapProfileTaken.record();

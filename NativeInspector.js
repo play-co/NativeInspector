@@ -476,8 +476,12 @@ function joinData(container) {
 
 function makeScriptInfo(script) {
 	var scriptName = (script.name === undefined) ? "(unnamed)" : String(script.name);
+	var srcOffset = scriptName.indexOf("/src");
 	var sharedOffset = scriptName.indexOf("/shared");
 	var isContentScript = (sharedOffset == -1) || (sharedOffset > 2);
+	if (isContentScript) {
+		isContentScript = (srcOffset == -1) || (srcOffset > 2);
+	}
 
 	return {
 		scriptId: String(script.id),
