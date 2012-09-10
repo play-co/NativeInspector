@@ -44,7 +44,7 @@ WebInspector.connectSocket = function() {
 		if (WebInspector.busyCtr == 0) {
 			// This is conditional so that it does not reset everything when
 			// the browser disconnects during a heavy work period.
-			WebInspector.socketConnected = false;
+			//WebInspector.socketConnected = false;
 		}
 		WebInspector.socket = io.connect("http://" + window.location.host + '/');
 	});
