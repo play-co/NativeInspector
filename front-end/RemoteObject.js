@@ -40,15 +40,14 @@ WebInspector.RemoteObject = function(objectId, type, subtype, value, description
 {
     this._type = type;
     this._subtype = subtype;
+    this._description = value || (description + "");
     if (objectId) {
         // handle
         this._objectId = objectId;
-        this._description = description;
         this._hasChildren = true;
     } else {
         // Primitive or null object.
         console.assert(type !== "object" || value === null);
-        this._description = description || (value + "");
         this._hasChildren = false;
         this.value = value;
     }
