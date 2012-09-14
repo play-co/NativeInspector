@@ -24,20 +24,5 @@ To run the software:
 node NativeInspector
 ```
 
-
-Change Log
-==========
-
-0.1.1 "Helpful Heaps" (Tue Sep 4, 2012)
-
-* Fixed a number of small issues since initial release
-
-* Changed /shared to /src for Content Script classification to match Basil
-
-* Fixed disconnect issue during moderate to large heap snapshot analysis
-
-
-0.1.0 "Hello WebKit"  (Thu Jul 19, 2012)
-
-* Initial version based on recent official Google WebKit Web Inspector
+Open your browser to "localhost:9220"
 

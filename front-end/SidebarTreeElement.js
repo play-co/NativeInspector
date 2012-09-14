@@ -181,6 +181,12 @@ WebInspector.SidebarTreeElement.prototype = {
     refreshTitles: function()
     {
         var mainTitle = this.mainTitle;
+
+		// Added subtitle to main title while small -cat
+		if (this._small && this._subtitle && this._subtitle.length > 0) {
+			mainTitle += " (" + this._subtitle + ")";
+		}
+
         if (this.titleElement.textContent !== mainTitle)
             this.titleElement.textContent = mainTitle;
 
