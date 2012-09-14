@@ -476,10 +476,10 @@ function joinData(container) {
 
 function makeScriptInfo(script) {
 	var scriptName = (script.name === undefined) ? "(unnamed)" : String(script.name);
-	var srcOffset = scriptName.indexOf("/src");
 	var sharedOffset = scriptName.indexOf("/shared");
 	var isContentScript = (sharedOffset == -1) || (sharedOffset > 2);
 	if (isContentScript) {
+		var srcOffset = scriptName.indexOf("/src");
 		isContentScript = (srcOffset == -1) || (srcOffset > 2);
 	}
 
@@ -970,9 +970,16 @@ BrowserHandler.prototype["Debugger.setPauseOnExceptions"] = function(req) {
 
 	var type = state, enabled = true;
 
+	// Our native code has its own default handler that we always want to
+	// override, so "uncaught" and "all" both cause all=true, and "none" will
+	// cause all=false.
+
 	if (state == 'none') {
-		type = 'uncaught';
+		type = 'all';
 		enabled = false;
+	} else {
+		type = 'all';
+		enabled = true;
 	}
 
 	this.client.setExceptionBreak(type, enabled, function(obj) {

@@ -602,6 +602,10 @@ WebInspector.DebuggerDispatcher.prototype = {
     globalObjectCleared: function()
     {
         this._debuggerModel._globalObjectCleared();
+
+
+		WebInspector.debuggerModel.enableDebugger();
+		WebInspector.debuggerModel.enableProfiler();
     },
 
     /**
