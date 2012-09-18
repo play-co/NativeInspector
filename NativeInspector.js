@@ -1717,7 +1717,7 @@ Client.prototype.handleBreak = function(body) {
 
 				this.browserServer.broadcastEvent("Debugger.paused", {
 					callFrames: frames,
-					reason: "Breakpoint @ " + body.script.name + ":" + body.sourceLine,
+					reason: "Breakpoint @ " + (body.script ? body.script.name : "[injected script]") + ":" + body.sourceLine,
 					data: "Source line text: " + body.sourceLineText
 				});
 			}
@@ -1732,7 +1732,7 @@ Client.prototype.handleBreak = function(body) {
 Client.prototype.handleException = function(body) {
 	var text = body.exception.value || body.exception.text;
 
-	this.browserServer.addConsoleMessage("warning", "-- Handling exception: " + text + ", from " + body.script.name + ":" + body.sourceLine);
+	this.browserServer.addConsoleMessage("warning", "-- Handling exception: " + text + ", from " + (body.script ? body.script.name : "[injected script]") + ":" + body.sourceLine);
 
 	this.handleBreak(body);
 }
