@@ -96,10 +96,10 @@ WebInspector.ConsoleView = function(hideContextSelector)
     }
 
     this.allElement = createFilterElement.call(this, "all", WebInspector.UIString("All"));
-    createDividerElement.call(this);
-    this.errorElement = createFilterElement.call(this, "errors", WebInspector.UIString("[Only System+JavaScript Logs]"));
-    this.warningElement = createFilterElement.call(this, "warnings", WebInspector.UIString("[Only Native+JavaScript Logs]"));
-    this.logElement = createFilterElement.call(this, "logs", WebInspector.UIString("[Only JavaScript Logs]"));
+    createDividerElement.call(this); // -cat
+    this.errorElement = createFilterElement.call(this, "errors", WebInspector.UIString("Only System+JavaScript Logs")); // -cat
+    this.warningElement = createFilterElement.call(this, "warnings", WebInspector.UIString("Only Native+JavaScript Logs")); // -cat
+    this.logElement = createFilterElement.call(this, "logs", WebInspector.UIString("Only JavaScript Logs")); // -cat
 
     this.filter(this.allElement, false);
     this._registerShortcuts();
@@ -243,10 +243,10 @@ WebInspector.ConsoleView.prototype = {
     {
         function unselectAll()
         {
-            this.allElement.removeStyleClass("selected");
-            this.errorElement.removeStyleClass("selected");
-            this.warningElement.removeStyleClass("selected");
-            this.logElement.removeStyleClass("selected");
+            this.allElement.removeStyleClass("selected"); // -cat
+            this.errorElement.removeStyleClass("selected"); // -cat
+            this.warningElement.removeStyleClass("selected"); // -cat
+            this.logElement.removeStyleClass("selected"); // -cat
 
             this.messagesElement.removeStyleClass("filter-all");
             this.messagesElement.removeStyleClass("filter-errors");
@@ -727,7 +727,7 @@ WebInspector.ConsoleView.prototype = {
                 console.error(error);
                 return;
             }
-            
+
             this._printResult(result, wasThrown);
         }
     },
@@ -758,7 +758,7 @@ WebInspector.ConsoleView.prototype = {
                 this.prompt.pushHistoryItem(text);
                 WebInspector.settings.consoleHistory.set(this.prompt.historyData.slice(-30));
             }
-            
+
             this._printResult(result, wasThrown);
         }
         this.evalInInspectedWindow(text, "console", useCommandLineAPI, false, false, printResult.bind(this));

@@ -1,0 +1,12 @@
+.connect-button {
+	border: 1px solid #A3A3A3;
+	border-radius: 12px;
+	margin: 0 6px;
+	font-size: 11px;
+	background-image: -webkit-linear-gradient(#F1F1F1, gainsboro);
+}
+.toolbar-item.remote div.toolbar-icon {
+	background-position: 0 0;
+	background-color: #808080;
+	background-image: url(Images/network.png) !important;
+}
