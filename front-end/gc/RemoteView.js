@@ -11,7 +11,7 @@ WebInspector.RemoteView = function(hideContextSelector)
 
 	this.element.id = "remote-view";
 
-	this.nativeElement = this._createPanel();
+	this.nativeElement = this._createNativePanel();
 	this.clientListElement = this._createPanel();
 
 	this._filterBarElement = document.createElement("div");
@@ -64,6 +64,17 @@ WebInspector.RemoteView.prototype = {
 		this.element.appendChild(div);
 
 		return div;
+	},
+
+	_createNativePanel: function() {
+		var panel = this._createPanel();
+
+		var h3 = document.createElement("h3");
+		h3.innerHTML = 'Native';
+
+		panel.appendChild(h3);
+
+		return panel;
 	},
 
 	_hidePanel: function(panel) {
