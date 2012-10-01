@@ -48,7 +48,9 @@ var WebInspector = {
             this.panels.console = new WebInspector.ConsolePanel();
             return;
         }
-        var hiddenPanels = (InspectorFrontendHost.hiddenPanels() || "").split(',');
+	    this.panels.remote = new WebInspector.RemotePanel(); // -arno
+
+	    var hiddenPanels = (InspectorFrontendHost.hiddenPanels() || "").split(',');
         if (hiddenPanels.indexOf("elements") === -1)
             this.panels.elements = new WebInspector.ElementsPanel();
         if (hiddenPanels.indexOf("resources") === -1)
@@ -225,7 +227,7 @@ var WebInspector = {
         if (this._drawerStatusBarHeader) {
             this._closePreviousDrawerView();
 
-            // Once drawer is closed console should be shown if it was shown before current view replaced it in drawer. 
+            // Once drawer is closed console should be shown if it was shown before current view replaced it in drawer.
             if (!this._consoleWasShown)
                 this.drawer.hide(WebInspector.Drawer.AnimationType.Immediately);
             else
@@ -479,6 +481,8 @@ WebInspector._doLoadedDoneWithCapabilities = function()
 
     this.drawer = new WebInspector.Drawer();
     this.consoleView = new WebInspector.ConsoleView(WebInspector.WorkerManager.isWorkerFrontend());
+
+    this.remoteView = new WebInspector.RemoteView(WebInspector.WorkerManager.isWorkerFrontend()); // -arno
 
     this.networkManager = new WebInspector.NetworkManager();
     this.resourceTreeModel = new WebInspector.ResourceTreeModel(this.networkManager);
