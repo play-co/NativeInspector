@@ -9,8 +9,8 @@ var urllib = require('url');
 var BROWSER_PORT = 9220;
 var CONTROL_PORT = 9221;
 var DEBUG_PORT = 9222;
-var DEBUG_HOST = '10.0.0.203';
-//var DEBUG_HOST = 'localhost';
+var IOS_HOST = '10.0.0.203';
+var ANDROID_HOST = 'localhost';
 var WEBROOT = require('path').join(__dirname, 'front-end');
 
 
@@ -179,14 +179,108 @@ var myAwesomeHTTPD = http.createServer(function(req, res) {
 });
 
 
+//// ClientJuggler
+// There are several clients competing here.
+// One for iOS and another for Android.
+// The first one to connect takes control, and when a client disconnects it
+// will switch to the other.
+
+ClientJuggler = Class.create();
+
+ClientJuggler.prototype.initialize = function() {
+	this.client = null;
+
+	this.activeClients = [];
+	this.inactiveClients = [];
+
+	this.pubsub = new PubSub();
+}
+
+ClientJuggler.prototype.addClient = function(port, addr) {
+	var client = new Client(myAwesomeHTTPD, port, addr);
+
+	// If no clients yet,
+	if (!this.client) {
+		// Default to it
+		this.client = client;
+
+
+	}
+
+	this.inactiveClients.push(client);
+
+	client.pubsub.subscribe(this, "connect", function() {
+		this.onDebuggerConnect(client);
+	}.bind(this));
+
+	client.pubsub.subscribe(this, "close", function() {
+		this.onDebuggerClose(client);
+	}.bind(this));
+}
+
+ClientJuggler.prototype.onDebuggerConnect = function(client) {
+	// Remove from inactive list
+	var ii = this.inactiveClients.indexOf(client);
+	if (ii >= 0) {
+		this.inactiveClients.splice(ii, 1);
+	}
+
+	// Add to active list
+	this.activeClients.push(client);
+
+	// If active client is not connected,
+	if (!this.client.connected) {
+		console.log('Inspect: Juggler: Client ' + client.description + ' connected.  Selecting it to replace inactive current master.');
+
+		// Switch to the newly active client!
+		this.client = client;
+
+		this.pubsub.publish('connect', client);
+	} else if (this.client === client) {
+		// Pass connect event through
+		this.pubsub.publish('connect', client);
+	} else {
+		console.log('Inspect: WARNING: Juggler: Client ' + client.description + ' connected.  But ignoring it because active master is connected already.');
+	}
+}
+
+ClientJuggler.prototype.onDebuggerClose = function(client) {
+	// Remove from active list
+	var ii = this.activeClients.indexOf(client);
+	if (ii >= 0) {
+		this.activeClients.splice(ii, 1);
+	}
+
+	// Add to inactive list
+	this.inactiveClients.push(client);
+
+	// If selected client was just removed,
+	if (this.client === client) {
+		console.log('Inspect: Juggler: Client ' + this.client.description + ' disconnected.');
+
+		this.pubsub.publish('close', client);
+
+		// Switch to a different active client if possible
+		if (this.activeClients.length > 0) {
+			console.log('Inspect: Juggler: Client ' + this.client.description + ' selected to replace it.');
+
+			// Switch to an active client!
+			this.client = this.activeClients[0];
+
+			this.pubsub.publish('connect', this.client);
+		}
+		// Otherwise continue using previous client to reduce state changes
+	}
+}
+
+
 //// Control Server
 // Allows the debug session and web inspector to be controlled programmatically
 
 ControlServer = Class.create();
 
-ControlServer.prototype.initialize = function(client) {
+ControlServer.prototype.initialize = function() {
 	this.sessions = new Array();
-	this.client = client;
 
 	var ws = io.listen(CONTROL_PORT);
 
@@ -201,7 +295,7 @@ ControlServer.prototype.initialize = function(client) {
 }
 
 ControlServer.prototype._on_conn = function(socket) {
-	this.sessions.push(new ControlSession(socket, this, this.client));
+	this.sessions.push(new ControlSession(socket, this));
 }
 
 ControlServer.prototype._on_disco = function(sessionIndex) {
@@ -223,12 +317,11 @@ ControlServer.prototype.broadcastEvent = function(name, data) {
 
 ControlSession = Class.create();
 
-ControlSession.prototype.initialize = function(socket, server, client) {
+ControlSession.prototype.initialize = function(socket, server) {
 	console.log('Inspect: Controller connected');
 
 	this.socket = socket;
 	this.server = server;
-	this.client = client;
 
 	// Subscribe to events from the web browser
 	socket.on('message', this.message.bind(this));
@@ -338,9 +431,8 @@ LogCatter.prototype.kill = function() {
 
 BrowserServer = Class.create();
 
-BrowserServer.prototype.initialize = function(app, client) {
+BrowserServer.prototype.initialize = function(app) {
 	this.sessions = new Array();
-	this.client = client;
 
 	var ws = io.listen(app);
 
@@ -351,8 +443,8 @@ BrowserServer.prototype.initialize = function(app, client) {
 
 	ws.sockets.on('connection', this._on_conn.bind(this));
 
-	client.pubsub.subscribe(this, "connect", this.onDebuggerConnect.bind(this));
-	client.pubsub.subscribe(this, "close", this.onDebuggerClose.bind(this));
+	juggler.pubsub.subscribe(this, "connect", this.onDebuggerConnect.bind(this));
+	juggler.pubsub.subscribe(this, "close", this.onDebuggerClose.bind(this));
 
 	console.log("Inspect: Listening for browsers");
 }
@@ -374,7 +466,7 @@ BrowserServer.prototype.onDebuggerClose = function() {
 }
 
 BrowserServer.prototype._on_conn = function(socket) {
-	this.sessions.push(new BrowserSession(socket, this, this.client));
+	this.sessions.push(new BrowserSession(socket, this));
 }
 
 BrowserServer.prototype._on_disco = function(session) {
@@ -504,12 +596,11 @@ function makeScriptInfo(script) {
 
 BrowserSession = Class.create();
 
-BrowserSession.prototype.initialize = function(socket, server, client) {
+BrowserSession.prototype.initialize = function(socket, server) {
 	console.log('Inspect: Browser connected');
 
 	this.socket = socket;
 	this.server = server;
-	this.client = client;
 	this.pingTimeout = null;
 	this.last_id = null; // For fast response path
 	this.loaded = false;
@@ -518,11 +609,11 @@ BrowserSession.prototype.initialize = function(socket, server, client) {
 	this.handler = new BrowserHandler();
 
 	// Subscribe to events from the debugger client
-	client.pubsub.subscribe(this, "connect", this.onDebuggerConnect.bind(this));
-	client.pubsub.subscribe(this, "close", this.onDebuggerClose.bind(this));
+	juggler.pubsub.subscribe(this, "connect", this.onDebuggerConnect.bind(this));
+	juggler.pubsub.subscribe(this, "close", this.onDebuggerClose.bind(this));
 
 	// Manually invoke onDebuggerConnect() if already connected before browser (common case)
-	if (client.connected) {
+	if (juggler.client && juggler.client.connected) {
 		this.onDebuggerConnect();
 	}
 
@@ -707,22 +798,28 @@ BrowserSession.prototype.sendProfileHeader = function(title, uid, type) {
 
 // Called whenever loaded and connected just became true, from any other state arriving in any order
 BrowserSession.prototype.onLoadAndDebug = function() {
+	if (!juggler.client) {
+		return;
+	}
+
 	this.resetPanels();
 
-	this.client.listBreakpoints(function(obj) {
+	juggler.client.listBreakpoints(function(obj) {
 		var breakpoints = obj.body.breakpoints;
 		for (var ii = 0; ii < breakpoints.length; ++ii) {
-			this.client.clearBreakpoint(breakpoints[ii].number, function(resp) {
-				// Ignore response
-			}.bind(this));
+			if (juggler.client) {
+				juggler.client.clearBreakpoint(breakpoints[ii].number, function(resp) {
+					// Ignore response
+				}.bind(this));
+			}
 		}
 	}.bind(this));
 
-	this.client.exitBreak(function(obj) {
+	juggler.client.exitBreak(function(obj) {
 		// Ignore response
 	}.bind(this));
 
-	this.client.getScripts(function(obj) {
+	juggler.client.getScripts(function(obj) {
 		for (var ii = 0, len = obj.body.length; ii < len; ++ii) {
 			this.sendEvent("Debugger.scriptParsed", makeScriptInfo(obj.body[ii]));
 		}
@@ -731,9 +828,13 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 	this.sendProfileHeaders();
 
 	// Print banner
-	this.client.version(function(resp) {
+	juggler.client.version(function(resp) {
 		if (resp.success && resp.body && resp.body.type !== "undefined") {
 			this.addConsoleMessage("error", "--- Initialization procedures completed.  Device uses engine: " + resp.body.V8Version + ".");
+
+			this.server.broadcastEvent("Debugger.ios", {
+				itis: (resp.body.ios ? true : false)
+			});
 		}
 	}.bind(this));
 }
@@ -763,7 +864,7 @@ BrowserSession.prototype.disconnect = function() {
 		clearTimeout(this.pingTimeout);
 	}
 
-	this.client.pubsub.unsubscribe(this);
+	juggler.pubsub.unsubscribe(this);
 
 	this.server._on_disco(this);
 }
@@ -810,23 +911,25 @@ BrowserHandler.prototype["Runtime.releaseObjectGroup"] = function(req) {
 }
 
 BrowserHandler.prototype["Runtime.evaluate"] = function(req) {
-	this.client.evaluate(req.params.expression, null, function(resp) {
-		// If evaulation succeeded,
-		if (resp.success) {
-			this.sendResponse(req.id, {
-				result: getRemoteObject(resp.body),
-				wasThrown: false
-			});
-		} else {
-			this.sendResponse(req.id, {
-				result: {
-					type: "error",
-					description: resp.message
-				},
-				wasThrown: true
-			});
-		}
-	}.bind(this));
+	if (juggler.client) {
+		juggler.client.evaluate(req.params.expression, null, function(resp) {
+			// If evaulation succeeded,
+			if (resp.success) {
+				this.sendResponse(req.id, {
+					result: getRemoteObject(resp.body),
+					wasThrown: false
+				});
+			} else {
+				this.sendResponse(req.id, {
+					result: {
+						type: "error",
+						description: resp.message
+					},
+					wasThrown: true
+				});
+			}
+		}.bind(this));
+	}
 }
 
 BrowserHandler.prototype["Runtime.callFunctionOn"] = function(req) {
@@ -843,7 +946,7 @@ BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 	var frame = +tokens[0], scope = +tokens[1], ref = tokens[2];
 
 	if (ref === "backtrace") {
-		this.client.scope(scope, frame, function(resp) {
+		juggler.client.scope(scope, frame, function(resp) {
 			// Convert refs array into a set
 			var refs = {};
 			if (resp.refs) {
@@ -873,7 +976,7 @@ BrowserHandler.prototype["Runtime.getProperties"] = function(req) {
 	} else {
 		var handle = +ref;
 
-		this.client.lookup([handle], function(resp) {
+		juggler.client.lookup([handle], function(resp) {
 			// Convert refs array into a set
 			var refs = {};
 			if (resp.refs) {
@@ -940,7 +1043,7 @@ BrowserHandler.prototype["Debugger.canSetScriptSource"] = function(req) {
 }
 
 BrowserHandler.prototype["Debugger.setScriptSource"] = function(req) {
-	this.client.changeLive(req.params.scriptId, false, req.params.scriptSource, function(resp) {
+	juggler.client.changeLive(req.params.scriptId, false, req.params.scriptSource, function(resp) {
 		this.sendResponse(req.id);
 
 		if (!resp.success) {
@@ -986,7 +1089,7 @@ BrowserHandler.prototype["Debugger.setPauseOnExceptions"] = function(req) {
 		enabled = true;
 	}
 
-	this.client.setExceptionBreak(type, enabled, function(obj) {
+	juggler.client.setExceptionBreak(type, enabled, function(obj) {
 		this.sendResponse(req.id);
 	}.bind(this));
 }
@@ -996,7 +1099,7 @@ BrowserHandler.prototype["Debugger.setBreakpointsActive"] = function(req) {
 
 	console.log("Inspect: setBreakpointsActive(", active, ")");
 
-	this.client.breakpointsActive = active;
+	juggler.client.breakpointsActive = active;
 
 	this.sendResponse(req.id);
 }
@@ -1004,7 +1107,7 @@ BrowserHandler.prototype["Debugger.setBreakpointsActive"] = function(req) {
 BrowserHandler.prototype["Debugger.setBreakpoint"] = function(req) {
 	var bp = req.params;
 
-	this.client.setBreakpoint(bp.location.scriptId, bp.location.lineNumber, bp.location.columnNumber, true, bp.condition, function(resp) {
+	juggler.client.setBreakpoint(bp.location.scriptId, bp.location.lineNumber, bp.location.columnNumber, true, bp.condition, function(resp) {
 		if (resp.success && resp.body && resp.body.type !== "undefined") {
 			var actual = resp.body.actual_locations;
 			var locations = [];
@@ -1028,7 +1131,7 @@ BrowserHandler.prototype["Debugger.setBreakpoint"] = function(req) {
 BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
 	var bp = req.params;
 
-	this.client.setBreakpointByUrl(bp.lineNumber, bp.url, bp.columnNumber, true, bp.condition, function(resp) {
+	juggler.client.setBreakpointByUrl(bp.lineNumber, bp.url, bp.columnNumber, true, bp.condition, function(resp) {
 		if (resp.success && resp.body && resp.body.type !== "undefined") {
 			var actual = resp.body.actual_locations;
 			var locations = [];
@@ -1052,38 +1155,38 @@ BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
 BrowserHandler.prototype["Debugger.removeBreakpoint"] = function(req) {
 	var id = req.params.breakpointId;
 
-	this.client.clearBreakpoint(id, function(resp) {
+	juggler.client.clearBreakpoint(id, function(resp) {
 		this.sendResponse(req.id);
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.stepInto"] = function(req) {
-	this.client.resume('in', 1, function(resp) {
+	juggler.client.resume('in', 1, function(resp) {
 		this.sendResponse(req.id);
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.stepOver"] = function(req) {
-	this.client.resume('next', 1, function(resp) {
+	juggler.client.resume('next', 1, function(resp) {
 		this.sendResponse(req.id);
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.stepOut"] = function(req) {
-	this.client.resume('out', 1, function(resp) {
+	juggler.client.resume('out', 1, function(resp) {
 		this.sendResponse(req.id);
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.pause"] = function(req) {
-	this.client.breakpointsActive = true;
+	juggler.client.breakpointsActive = true;
 
-	this.client.suspend(function(resp) {
+	juggler.client.suspend(function(resp) {
 		if (resp.running) {
 			this.sendResponse(req.id);
 			this.addConsoleMessage("error", "--- Device rejected our pause request");
 		} else {
-			this.client.backtrace(function(resp) {
+			juggler.client.backtrace(function(resp) {
 				try {
 					var frames = convertCallFrames(resp.body.frames);
 
@@ -1102,14 +1205,14 @@ BrowserHandler.prototype["Debugger.pause"] = function(req) {
 }
 
 BrowserHandler.prototype["Debugger.resume"] = function(req) {
-	this.client.exitBreak(function(resp) {
+	juggler.client.exitBreak(function(resp) {
 		this.sendResponse(req.id);
 		this.server.broadcastEvent("Debugger.resumed");
 	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.evaluateOnCallFrame"] = function(req) {
-	this.client.evaluate(req.params.expression, req.params.callFrameId, function(resp) {
+	juggler.client.evaluate(req.params.expression, req.params.callFrameId, function(resp) {
 		// If evaulation succeeded,
 		if (resp.success && resp.body && resp.body.type !== "undefined") {
 			this.sendResponse(req.id, {
@@ -1131,7 +1234,7 @@ BrowserHandler.prototype["Debugger.evaluateOnCallFrame"] = function(req) {
 BrowserHandler.prototype["Debugger.getScriptSource"] = function(req) {
 	var scriptId = req.params.scriptId;
 
-	this.client.getScriptSource(scriptId, function(resp) {
+	juggler.client.getScriptSource(scriptId, function(resp) {
 		if (!resp.success || !resp.body[0] || !resp.body[0].source) {
 			this.sendResponse(req.id, {
 				scriptSource: "Unable to load source file.  Try reloading the page"
@@ -1168,13 +1271,13 @@ BrowserHandler.prototype["Profiler.enable"] = function(req) {
 }
 
 BrowserHandler.prototype["Profiler.start"] = function(req) {
-	var uid = this.client.profileCache.getNextUid('CPU');
+	var uid = juggler.client.profileCache.getNextUid('CPU');
 	var title = "org.webkit.profiles.user-initiated." + uid;
 	this.activeTitle = title;
 
 	console.log("Inspect: Start profiling " + title);
 
-	this.client.evaluate('PROFILER.cpuProfiler.startProfiling("' + title + '")', null, function(resp) {
+	juggler.client.evaluate('PROFILER.cpuProfiler.startProfiling("' + title + '")', null, function(resp) {
 		this.server.broadcastEvent("Profiler.setRecordingProfile", {
 			isProfiling: resp.success
 		});
@@ -1189,7 +1292,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 	if (title) {
 		this.activeTitle = null;
 
-		this.client.evaluate('PROFILER.cpuProfiler.stopProfiling("' + title + '")', null, function(resp) {
+		juggler.client.evaluate('PROFILER.cpuProfiler.stopProfiling("' + title + '")', null, function(resp) {
 			this.server.broadcastEvent("Profiler.setRecordingProfile", {
 				isProfiling: false
 			});
@@ -1198,8 +1301,8 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 				var obj = reconstructObject(resp);
 				var data = JSON.parse(joinData(obj));
 
-				this.client.profileCache.gotHeader('CPU', obj.uid, obj.title);
-				this.client.profileCache.set('CPU', obj.uid, data);
+				juggler.client.profileCache.gotHeader('CPU', obj.uid, obj.title);
+				juggler.client.profileCache.set('CPU', obj.uid, data);
 
 				this.sendProfileHeader(obj.title, obj.uid, 'CPU');
 			} catch (err) {
@@ -1211,7 +1314,7 @@ BrowserHandler.prototype["Profiler.stop"] = function(req) {
 }
 
 BrowserSession.prototype.sendProfileHeaders = function() {
-	this.client.evaluate("PROFILER.cpuProfiler.getProfileHeaders()", null, function(resp) {
+	juggler.client.evaluate("PROFILER.cpuProfiler.getProfileHeaders()", null, function(resp) {
 		try {
 			var obj = reconstructObject(resp);
 
@@ -1220,7 +1323,7 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 			for (var ii = 0, len = obj.length; ii < len; ++ii) {
 				var profile = JSON.parse(obj[ii]);
 
-				this.client.profileCache.gotHeader(profile.typeId, profile.uid, profile.title);
+				juggler.client.profileCache.gotHeader(profile.typeId, profile.uid, profile.title);
 
 				this.sendProfileHeader(profile.title, profile.uid, profile.typeId);
 			}
@@ -1230,14 +1333,14 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 		}
 	}.bind(this));
 
-	this.client.evaluate("PROFILER.heapProfiler.getSnapshotsCount()", null, function(resp) {
+	juggler.client.evaluate("PROFILER.heapProfiler.getSnapshotsCount()", null, function(resp) {
 		if (resp.success && resp.body && resp.body.type !== "undefined") {
 			var count = resp.body.value;
 
 			console.log("Inspect: Got " + count + " heap profile headers");
 
 			for (var uid = 0; uid < count; ++uid) {
-				var profile = this.client.profileCache.get("HEAP", uid);
+				var profile = juggler.client.profileCache.get("HEAP", uid);
 
 				if (profile) {
 					this.sendEvent("Profiler.addHeapSnapshotChunk", {
@@ -1248,14 +1351,14 @@ BrowserSession.prototype.sendProfileHeaders = function() {
 						uid: profile.snapshot.uid
 					});
 				} else {
-					this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + uid + ")", null, function(resp) {
+					juggler.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + uid + ")", null, function(resp) {
 						try {
 							var obj = reconstructObject(resp);
 							var data = JSON.parse(joinData(obj));
 
 							this.sendProfileHeader(data.snapshot.title, data.snapshot.uid, "HEAP");
 
-							this.client.profileCache.set("HEAP", data.snapshot.uid, data);
+							juggler.client.profileCache.set("HEAP", data.snapshot.uid, data);
 						} catch (err) {
 							console.log("Inspect: Unable to process HEAP GetSnapshot response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
 							this.addConsoleMessage("error", "--- Error in HEAP GetSnapshot response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
@@ -1277,7 +1380,7 @@ BrowserHandler.prototype["Profiler.getProfileHeaders"] = function(req) {
 BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 	console.log("Inspect: Get " + req.params.type + " profile #" + req.params.uid);
 
-	var profile = this.client.profileCache.get(req.params.type, req.params.uid);
+	var profile = juggler.client.profileCache.get(req.params.type, req.params.uid);
 
 	if (profile) {
 		if (req.params.type === "CPU") {
@@ -1297,7 +1400,7 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 		}
 	} else {
 		if (req.params.type === "CPU") {
-			this.client.evaluate("PROFILER.cpuProfiler.getProfile(" + req.params.uid + ")", null, function(resp) {
+			juggler.client.evaluate("PROFILER.cpuProfiler.getProfile(" + req.params.uid + ")", null, function(resp) {
 				try {
 					var obj = reconstructObject(resp);
 					var data = JSON.parse(joinData(obj));
@@ -1308,14 +1411,14 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 						}
 					});
 
-					this.client.profileCache.set(req.params.type, req.params.uid, data);
+					juggler.client.profileCache.set(req.params.type, req.params.uid, data);
 				} catch (err) {
 					console.log("Inspect: Unable to process CPU GetProfile response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
 					this.addConsoleMessage("error", "--- Error in CPU GetProfile response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
 				}
 			}.bind(this));
 		} else if (req.params.type === "HEAP") {
-			this.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + req.params.uid + ")", null, function(resp) {
+			juggler.client.evaluate("PROFILER.heapProfiler.getSnapshot(" + req.params.uid + ")", null, function(resp) {
 				try {
 					var obj = reconstructObject(resp);
 					var data = JSON.parse(joinData(obj));
@@ -1326,7 +1429,7 @@ BrowserHandler.prototype["Profiler.getProfile"] = function(req) {
 						}
 					});
 
-					this.client.profileCache.set(req.params.type, req.params.uid, data);
+					juggler.client.profileCache.set(req.params.type, req.params.uid, data);
 				} catch (err) {
 					console.log("Inspect: Unable to process HEAP GetSnapshot response.  Error: " + err + "  Data: " + JSON.stringify(resp, undefined, 4));
 					this.addConsoleMessage("error", "--- Error in HEAP GetSnapshot response from device.  Please ensure that the latest debug-mode Android sources are used in the application");
@@ -1343,11 +1446,11 @@ BrowserHandler.prototype["Profiler.removeProfile"] = function(req) {
 BrowserHandler.prototype["Profiler.clearProfiles"] = function(req) {
 	console.log("Inspect: Clear profiles");
 
-	this.client.evaluate("PROFILER.cpuProfiler.deleteAllProfiles()", null, function(resp) {
+	juggler.client.evaluate("PROFILER.cpuProfiler.deleteAllProfiles()", null, function(resp) {
 		this.sendResponse(req.id);
 	}.bind(this));
 
-	this.client.evaluate("PROFILER.heapProfiler.deleteAllSnapshots()", null, function(resp) {
+	juggler.client.evaluate("PROFILER.heapProfiler.deleteAllSnapshots()", null, function(resp) {
 		this.sendResponse(req.id);
 	}.bind(this));
 }
@@ -1363,7 +1466,7 @@ BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
 		total: 100
 	});
 
-	this.client.evaluate('PROFILER.heapProfiler.takeSnapshot("' + title +'")', null, function(resp) {
+	juggler.client.evaluate('PROFILER.heapProfiler.takeSnapshot("' + title +'")', null, function(resp) {
 		try {
 			console.log("Inspect: Heap snapshot response received.  Repackaging snapshot...");
 
@@ -1383,7 +1486,7 @@ BrowserHandler.prototype["Profiler.takeHeapSnapshot"] = function(req) {
 
 			this.sendProfileHeader(title, data.snapshot.uid, "HEAP");
 
-			this.client.profileCache.set('HEAP', data.snapshot.uid, data);
+			juggler.client.profileCache.set('HEAP', data.snapshot.uid, data);
 
 			console.log("Inspect: Heap snapshot repackaged (" + str.length + " bytes).  Sent profile header to browser");
 		} catch (err) {
@@ -1404,6 +1507,18 @@ BrowserHandler.prototype["Profiler.disable"] = function(req) {
 
 	this.sendResponse(req.id);
 }
+
+
+//// Server instances
+
+var juggler = new ClientJuggler();
+
+// One browser server accepting multiple browsers
+var browserServer = new BrowserServer(myAwesomeHTTPD, juggler);
+
+// One control server accepting multiple control connexions
+var controlServer = new ControlServer(browserServer, juggler);
+
 
 
 //// Response Callbacks
@@ -1606,8 +1721,12 @@ ProfileCache.prototype.clear = function() {
 
 Client = Class.create();
 
-Client.prototype.initialize = function(httpd) {
+Client.prototype.initialize = function(httpd, port, addr) {
 	this.httpd = httpd;
+
+	this.port = port;
+	this.addr = addr;
+	this.description = addr + " : " + DEBUG_PORT;
 
 	this.callbacks = new ResponseCallbacks();
 	this.pubsub = new PubSub();
@@ -1625,15 +1744,9 @@ Client.prototype.initialize = function(httpd) {
 	s.on('connect', this.connect.bind(this));
 	s.on('data', this.data.bind(this));
 	s.on('close', this.close.bind(this));
-	s.connect(DEBUG_PORT, DEBUG_HOST);
+	s.connect(port, addr);
 
-	// One browser server accepting multiple browsers
-	this.browserServer = new BrowserServer(httpd, this);
-
-	// One control server accepting multiple control connexions
-	this.controlServer = new ControlServer(this.browserServer, this);
-
-	console.log("Inspect: Debug client started");
+	console.log("Inspect: Debug client started for " + addr + " : " + DEBUG_PORT);
 }
 
 Client.prototype.error = function(e) {
@@ -1663,7 +1776,7 @@ Client.prototype.message = function(msg) {
 	if (msg.headers.Type == 'connect') {
 		// If not already connected,
 		if (!this.connected) {
-			console.log("Inspect: Debug client connected");
+			console.log("Inspect: Debug client connected to " + this.description);
 
 			// Flush profile cache
 			this.profileCache.clear();
@@ -1697,7 +1810,7 @@ Client.prototype.message = function(msg) {
 Client.prototype.close = function() {
 	// If was connected and not just retrying a reconnection,
 	if (this.connected) {
-		console.log("Inspect: Debug client close");
+		console.log("Inspect: Debug client close from " + this.description);
 
 		this.pubsub.publish('close', null);
 	}
@@ -1708,16 +1821,15 @@ Client.prototype.close = function() {
 	this.connecting = false;
 
 	// Reconnect every 5 seconds after disco
-	var that = this;
 	this.reconnectTimeout = setTimeout(function() {
-		if (!that.connecting) {
-			that.connecting = true;
+		if (!this.connecting) {
+			this.connecting = true;
 
-			that.socket.connect(DEBUG_PORT, DEBUG_HOST);
+			this.socket.connect(this.port, this.addr);
 		}
 
-		that.reconnectTimeout = null;
-	}, 5000);
+		this.reconnectTimeout = null;
+	}.bind(this), 5000);
 }
 
 Client.prototype.request = function(msg, callback) {
@@ -1746,7 +1858,7 @@ Client.prototype.handleBreak = function(body) {
 			if (resp.success && resp.body && resp.body.type !== "undefined") {
 				var frames = convertCallFrames(resp.body.frames);
 
-				this.browserServer.broadcastEvent("Debugger.paused", {
+				browserServer.broadcastEvent("Debugger.paused", {
 					callFrames: frames,
 					reason: "Breakpoint @ " + (body.script ? body.script.name : "[injected script]") + ":" + body.sourceLine,
 					data: "Source line text: " + body.sourceLineText
@@ -1755,7 +1867,7 @@ Client.prototype.handleBreak = function(body) {
 		}.bind(this));
 	} else {
 		this.exitBreak(function(resp) {
-			this.browserServer.broadcastEvent("Debugger.resumed");
+			browserServer.broadcastEvent("Debugger.resumed");
 		}.bind(this));
 	}
 }
@@ -1763,7 +1875,7 @@ Client.prototype.handleBreak = function(body) {
 Client.prototype.handleException = function(body) {
 	var text = body.exception.value || body.exception.text;
 
-	this.browserServer.addConsoleMessage("warning", "-- Handling exception: " + text + ", from " + (body.script ? body.script.name : "[injected script]") + ":" + body.sourceLine);
+	browserServer.addConsoleMessage("warning", "-- Handling exception: " + text + ", from " + (body.script ? body.script.name : "[injected script]") + ":" + body.sourceLine);
 
 	this.handleBreak(body);
 }
@@ -1778,9 +1890,9 @@ Client.prototype.handleEvent = function(obj) {
 		break;
 	case "afterCompile":
 		if (obj.body && obj.body.script) {
-			this.browserServer.addConsoleMessage("warning", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
+			browserServer.addConsoleMessage("warning", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
 
-			this.browserServer.broadcastEvent("Debugger.scriptParsed", makeScriptInfo(obj.body.script));
+			browserServer.broadcastEvent("Debugger.scriptParsed", makeScriptInfo(obj.body.script));
 		}
 		break;
 	case "scriptCollected":
@@ -2021,9 +2133,11 @@ Client.prototype.lookup = function(handles, callback) {
 
 //// Main Engine Ignition!
 
-// One shared debug client for all browsers
-var myAwesomeDebugClient = new Client(myAwesomeHTTPD);
+// Add clients
+juggler.addClient(DEBUG_PORT, IOS_HOST);
+juggler.addClient(DEBUG_PORT, ANDROID_HOST);
 
 // One shared web server
 myAwesomeHTTPD.listen(BROWSER_PORT);
 console.log("Inspect: Lurking at http://0.0.0.0:" + BROWSER_PORT);
+

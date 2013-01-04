@@ -2710,6 +2710,13 @@
             {
                 "name": "resumed",
                 "description": "Fired when the virtual machine resumed execution."
+            },
+            {
+                "name": "ios",
+                "parameters": [
+                    { "name": "itis", "type": "boolean", "description": "Boolean flag whether or not we are in iOS mode." }
+                ],
+                "description": "Enable or disable iOS mode. Added this for SpiderMonkey remote debugger. -cat"
             }
         ]
     },
