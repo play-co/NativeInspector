@@ -9,6 +9,8 @@ var urllib = require('url');
 var BROWSER_PORT = 9220;
 var CONTROL_PORT = 9221;
 var DEBUG_PORT = 9222;
+var DEBUG_HOST = '10.0.0.203';
+//var DEBUG_HOST = 'localhost';
 var WEBROOT = require('path').join(__dirname, 'front-end');
 
 
@@ -640,6 +642,8 @@ BrowserSession.prototype.onPingTimer = function() {
 BrowserSession.prototype.message = function(req_str) {
 	var req = JSON.parse(req_str);
 
+	//console.log("CAT: " + JSON.stringify(req, undefined, 4));
+
 	if (req && req.method) {
 		var f = this.handler[req.method];
 
@@ -729,7 +733,7 @@ BrowserSession.prototype.onLoadAndDebug = function() {
 	// Print banner
 	this.client.version(function(resp) {
 		if (resp.success && resp.body && resp.body.type !== "undefined") {
-			this.addConsoleMessage("error", "--- Initialization procedures completed.  Device uses V8 version " + resp.body.V8Version + ".");
+			this.addConsoleMessage("error", "--- Initialization procedures completed.  Device uses engine: " + resp.body.V8Version + ".");
 		}
 	}.bind(this));
 }
@@ -995,6 +999,30 @@ BrowserHandler.prototype["Debugger.setBreakpointsActive"] = function(req) {
 	this.client.breakpointsActive = active;
 
 	this.sendResponse(req.id);
+}
+
+BrowserHandler.prototype["Debugger.setBreakpoint"] = function(req) {
+	var bp = req.params;
+
+	this.client.setBreakpoint(bp.location.scriptId, bp.location.lineNumber, bp.location.columnNumber, true, bp.condition, function(resp) {
+		if (resp.success && resp.body && resp.body.type !== "undefined") {
+			var actual = resp.body.actual_locations;
+			var locations = [];
+
+			for (var ii = 0; ii < actual.length; ++ii) {
+				locations.push({
+					lineNumber: actual[ii].line,
+					columnNumber: actual[ii].column,
+					scriptId: String(actual[ii].script_id)
+				});
+			}
+
+			this.sendResponse(req.id, {
+				breakpointId: String(resp.body.breakpoint),
+				locations: locations
+			});
+		}
+	}.bind(this));
 }
 
 BrowserHandler.prototype["Debugger.setBreakpointByUrl"] = function(req) {
@@ -1597,7 +1625,7 @@ Client.prototype.initialize = function(httpd) {
 	s.on('connect', this.connect.bind(this));
 	s.on('data', this.data.bind(this));
 	s.on('close', this.close.bind(this));
-	s.connect(DEBUG_PORT);
+	s.connect(DEBUG_PORT, DEBUG_HOST);
 
 	// One browser server accepting multiple browsers
 	this.browserServer = new BrowserServer(httpd, this);
@@ -1628,6 +1656,9 @@ Client.prototype.data = function(data) {
 }
 
 Client.prototype.message = function(msg) {
+
+	//console.log("CAT: " + JSON.stringify(msg, undefined, 4));
+
 	// If message is the initial connect notification,
 	if (msg.headers.Type == 'connect') {
 		// If not already connected,
@@ -1682,7 +1713,7 @@ Client.prototype.close = function() {
 		if (!that.connecting) {
 			that.connecting = true;
 
-			that.socket.connect(DEBUG_PORT);
+			that.socket.connect(DEBUG_PORT, DEBUG_HOST);
 		}
 
 		that.reconnectTimeout = null;
