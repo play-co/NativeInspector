@@ -1888,6 +1888,11 @@ Client.prototype.handleEvent = function(obj) {
 	case "exception":
 		this.handleException(obj.body);
 		break;
+	case "log":
+		if (obj.body && obj.body.message) {
+			browserServer.addConsoleMessage("debug", obj.body.message);
+		}
+		break;
 	case "afterCompile":
 		if (obj.body && obj.body.script) {
 			browserServer.addConsoleMessage("warning", "-- Script compiled: " + obj.body.script.name + " [" + obj.body.script.sourceLength + " bytes]");
