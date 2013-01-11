@@ -9,7 +9,6 @@ var urllib = require('url');
 var BROWSER_PORT = 9220;
 var CONTROL_PORT = 9221;
 var DEBUG_PORT = 9222;
-var IOS_HOST = '10.0.0.203';
 var ANDROID_HOST = 'localhost';
 var WEBROOT = require('path').join(__dirname, 'front-end');
 
@@ -203,8 +202,6 @@ ClientJuggler.prototype.addClient = function(port, addr) {
 	if (!this.client) {
 		// Default to it
 		this.client = client;
-
-
 	}
 
 	this.inactiveClients.push(client);
@@ -312,6 +309,12 @@ ControlServer.prototype.broadcastEvent = function(name, data) {
 }
 
 
+//// Instance
+
+// Client juggler instance
+var juggler = new ClientJuggler();
+
+
 //// Control Session
 // Connexion with a control client
 
@@ -341,8 +344,13 @@ ControlSession.prototype.message = function(data_str) {
 	var data = JSON.parse(data_str);
 
 	switch (data.name) {
-	case 'log':
-		console.log('Inspect: Log message ', JSON.stringify(data));
+	case 'connect':
+		if (data.addr) {
+			console.log('Inspect: Control: Requested to connect to ' + data.addr);
+
+			// Add client to juggler
+			juggler.addClient(DEBUG_PORT, data.addr);
+		}
 		break;
 	}
 }
@@ -1511,8 +1519,6 @@ BrowserHandler.prototype["Profiler.disable"] = function(req) {
 
 //// Server instances
 
-var juggler = new ClientJuggler();
-
 // One browser server accepting multiple browsers
 var browserServer = new BrowserServer(myAwesomeHTTPD, juggler);
 
@@ -2138,8 +2144,7 @@ Client.prototype.lookup = function(handles, callback) {
 
 //// Main Engine Ignition!
 
-// Add clients
-juggler.addClient(DEBUG_PORT, IOS_HOST);
+// Add default client
 juggler.addClient(DEBUG_PORT, ANDROID_HOST);
 
 // One shared web server
