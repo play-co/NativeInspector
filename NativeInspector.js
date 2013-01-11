@@ -1,4 +1,5 @@
 var net = require('net');
+var dgram = require('dgram');
 var path = require('path');
 var http = require('http');
 var paperboy = require('paperboy');
@@ -7,7 +8,7 @@ var child_process = require('child_process');
 var urllib = require('url');
 
 var BROWSER_PORT = 9220;
-var CONTROL_PORT = 9221;
+var CONTROL_PORT = 9320;
 var DEBUG_PORT = 9222;
 var ANDROID_HOST = 'localhost';
 var WEBROOT = require('path').join(__dirname, 'front-end');
@@ -195,7 +196,36 @@ ClientJuggler.prototype.initialize = function() {
 	this.pubsub = new PubSub();
 }
 
+ClientJuggler.prototype.findClient = function(port, addr) {
+	for (var ii in this.activeClients) {
+		var client = this.activeClients[ii];
+
+		if (client.addr === addr &&
+			client.port === port) {
+			return client;
+		}
+	}
+
+	for (var ii in this.inactiveClients) {
+		var client = this.inactiveClients[ii];
+
+		if (client.addr === addr &&
+			client.port === port) {
+			return client;
+		}
+	}
+
+	return undefined;
+}
+
 ClientJuggler.prototype.addClient = function(port, addr) {
+	// Abort if client already exists
+	var existingClient = this.findClient(port, addr);
+	if (existingClient) {
+		console.log('Inspect: Juggler: Duplicate client add for ' + existingClient.description + ' ignored.');
+		return;
+	}
+
 	var client = new Client(myAwesomeHTTPD, port, addr);
 
 	// If no clients yet,
@@ -271,107 +301,48 @@ ClientJuggler.prototype.onDebuggerClose = function(client) {
 }
 
 
-//// Control Server
-// Allows the debug session and web inspector to be controlled programmatically
-
-ControlServer = Class.create();
-
-ControlServer.prototype.initialize = function() {
-	this.sessions = new Array();
-
-	var ws = io.listen(CONTROL_PORT);
-
-	ws.configure(function() {
-		ws.set('transports', ['websocket']);
-		ws.set('log level', 0); // Change this to reduce log spam
-	});
-
-	ws.sockets.on('connection', this._on_conn.bind(this));
-
-	console.log('Inspect: Listening for controllers');
-}
-
-ControlServer.prototype._on_conn = function(socket) {
-	this.sessions.push(new ControlSession(socket, this));
-}
-
-ControlServer.prototype._on_disco = function(sessionIndex) {
-	var ii = this.sessions.indexOf(session);
-	if (ii != -1) {
-		this.sessions.splice(ii, 1);
-	}
-}
-
-ControlServer.prototype.broadcastEvent = function(name, data) {
-	for (session in this.sessions) {
-		this.sessions[session].sendEvent(name, data);
-	}
-}
-
-
 //// Instance
 
 // Client juggler instance
 var juggler = new ClientJuggler();
 
 
-//// Control Session
-// Connexion with a control client
+//// Control Server
+// Allows the debug session and web inspector to be controlled programmatically
 
-ControlSession = Class.create();
+ControlServer = Class.create();
 
-ControlSession.prototype.initialize = function(socket, server) {
-	console.log('Inspect: Controller connected');
+ControlServer.prototype.initialize = function(port) {
+	this.sessions = new Array();
 
-	this.socket = socket;
-	this.server = server;
+	// Set up socket server
+	var s = new dgram.createSocket("udp4");
+	this.socket = s;
 
-	// Subscribe to events from the web browser
-	socket.on('message', this.message.bind(this));
-	socket.on('disconnect', this.disconnect.bind(this));
+	s.bind(port);
 
-	// Prime the ping pump
-	this.onPingTimer();
-}
+	s.on('message', function(buffer) {
+		var data = buffer.toString('utf-8');
 
-ControlSession.prototype.onPingTimer = function() {
-	this.sendEvent('ping', 'wazaaaa');
+		try {
+			data = JSON.parse(data);
 
-	this.pingTimeout = setTimeout(this.onPingTimer.bind(this), 30000);
-}
+			switch (data.name) {
+			case 'connect':
+				if (data.addr) {
+					console.log('Inspect: Control: Requested to connect to ' + data.addr);
 
-ControlSession.prototype.message = function(data_str) {
-	var data = JSON.parse(data_str);
-
-	switch (data.name) {
-	case 'connect':
-		if (data.addr) {
-			console.log('Inspect: Control: Requested to connect to ' + data.addr);
-
-			// Add client to juggler
-			juggler.addClient(DEBUG_PORT, data.addr);
+					// Add client to juggler
+					juggler.addClient(DEBUG_PORT, data.addr);
+				}
+				break;
+			}
+		} catch (err) {
+			console.log('Inspect: Control: Bad request: ' + data);
 		}
-		break;
-	}
-}
-
-ControlSession.prototype.sendEvent = function(name, data) {
-	console.log('Inspect: Control sending event ', name);
-
-	this.socket.send({
-		name: name,
-		data: data
 	});
-}
 
-ControlSession.prototype.disconnect = function() {
-	console.log('Inspect: Controller disconnected');
-
-	if (this.pingTimeout) {
-		clearTimeout(this.pingTimeout);
-	}
-
-	this.server._on_disco(this);
+	console.log('Inspect: Listening for controllers on port ' + port);
 }
 
 
@@ -1520,10 +1491,10 @@ BrowserHandler.prototype["Profiler.disable"] = function(req) {
 //// Server instances
 
 // One browser server accepting multiple browsers
-var browserServer = new BrowserServer(myAwesomeHTTPD, juggler);
+var browserServer = new BrowserServer(myAwesomeHTTPD);
 
 // One control server accepting multiple control connexions
-var controlServer = new ControlServer(browserServer, juggler);
+var controlServer = new ControlServer(CONTROL_PORT);
 
 
 
