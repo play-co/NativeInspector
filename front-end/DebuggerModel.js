@@ -644,11 +644,6 @@ WebInspector.DebuggerDispatcher.prototype = {
     },
 
 	ios: function(itis) {
-/*		if (itis) {
-			console.log("CAT: IOS ENABLED");
-		} else {
-			console.log("CAT: IOS DISABLED");
-		}*/
 	}
 }
 
