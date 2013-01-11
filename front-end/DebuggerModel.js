@@ -605,7 +605,7 @@ WebInspector.DebuggerDispatcher.prototype = {
 
 
 		WebInspector.debuggerModel.enableDebugger();
-		WebInspector.debuggerModel.enableProfiler();
+		//WebInspector.debuggerModel.enableProfiler(); not defined -cat
     },
 
     /**
@@ -641,7 +641,10 @@ WebInspector.DebuggerDispatcher.prototype = {
     breakpointResolved: function(breakpointId, location)
     {
         this._debuggerModel._breakpointResolved(breakpointId, location);
-    }
+    },
+
+	ios: function(itis) {
+	}
 }
 
 /**
