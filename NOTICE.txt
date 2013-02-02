@@ -1,0 +1,6 @@
+This project makes use of code:
+
+Files under ./front-end/ have been re-used from the Google WebKit Web Inspector project (http://svn.webkit.org/repository/webkit/trunk/Source/WebCore/inspector/front-end/).
+
+Modifications to files have been marked and explained with " -cat" tags in case these changes need to be brought forward.
+
