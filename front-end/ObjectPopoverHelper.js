@@ -124,8 +124,19 @@ WebInspector.ObjectPopoverHelper.prototype = {
                 section.headerElement.addStyleClass("hidden");
                 popoverContentElement.appendChild(section.element);
 
-                const popoverWidth = 300;
+				// Increase popover width -cat
+                const popoverWidth = 640;
                 const popoverHeight = 250;
+
+				const highLimit = (window.innerWidth - 500);
+				const lowLimit = 300;
+				if (popoverWidth > highLimit) {
+					popoverWidth = highLimit;
+				}
+				if (popoverWidth < lowLimit) {
+					popoverWidth = lowLimit;
+				}
+
                 popover.show(popoverContentElement, anchorElement, popoverWidth, popoverHeight);
             }
         }
