@@ -713,7 +713,8 @@ BrowserSession.prototype.onDebuggerClose = function() {
 		if (this.loaded) {
 			this.addConsoleMessage("error", "--- Device disconnected.");
 
-			this.resetPanels();
+			// Create scripts view only
+			this.sendEvent("Debugger.globalObjectCleared");
 		}
 	}
 }
