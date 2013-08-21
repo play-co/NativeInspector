@@ -1,6 +1,6 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource prefix="/webkit/inspector">
-    <file>inspector.html</file>
+    <file>index.html</file>
     <file>AdvancedSearchController.js</file>
     <file>ApplicationCacheItemsView.js</file>
     <file>ApplicationCacheModel.js</file>
