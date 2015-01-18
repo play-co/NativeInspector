@@ -1,19 +1,29 @@
 {
-    "name": "NativeInspector",
-	"main": "./NativeInspector.js",
-    "version": "0.1.0",
-    "description": "Web Inspector for native JavaScript",
-    "homepage": "http://github.com/gameclosure/NativeInspector",
-    "author": "Christopher A. Taylor <chris@gameclosure.com>",
-    "keywords": ["debug", "debugger", "inspector", "profiler"],
-    "repository": {
-      "type": "git",
-      "url": "https://github.com/gameclosure/NativeInspector.git"
-    },
-    "engines" : { "node": ">=0.3.0" },
-    "bin" : { "NativeInspector" : "./NativeInspector.js" },
-    "dependencies": {
-      "socket.io": "~0.8.2",
-      "paperboy": "~0.0.2"
-    }
+  "name": "NativeInspector",
+  "main": "./NativeInspector.js",
+  "version": "0.1.0",
+  "description": "Web Inspector for native JavaScript",
+  "homepage": "http://github.com/gameclosure/NativeInspector",
+  "author": "Christopher A. Taylor <chris@gameclosure.com>",
+  "keywords": [
+    "debug",
+    "debugger",
+    "inspector",
+    "profiler"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gameclosure/NativeInspector.git"
+  },
+  "engines": {
+    "node": ">=0.3.0"
+  },
+  "bin": {
+    "NativeInspector": "./NativeInspector.js"
+  },
+  "dependencies": {
+    "minimist": "^1.1.0",
+    "paperboy": "~0.0.2",
+    "socket.io": "~0.8.2"
+  }
 }
